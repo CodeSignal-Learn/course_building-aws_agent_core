@@ -1,0 +1,10 @@
+# Python cache
+__pycache__/
+
+# macOS
+.DS_Store
+
+# Agent Core
+.bedrock_agentcore.yaml
+Dockerfile
+.dockerignore
