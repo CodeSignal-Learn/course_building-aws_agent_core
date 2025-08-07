@@ -18,20 +18,6 @@ assistant = Agent(
     llm=llm
 )
 
-# Define a default task for the agent
-task = Task(
-    agent=assistant,
-    description="Explain Amazon Bedrock in one paragraph.",
-    expected_output="A clear and concise paragraph explaining Amazon Bedrock."
-)
-
-# Create a Crew with a single agent and task
-crew = Crew(
-    agents=[assistant],
-    tasks=[task],
-    process=Process.sequential
-)
-
 # Create the Bedrock AgentCore Runtime app wrapper
 app = BedrockAgentCoreApp()
 
@@ -45,10 +31,24 @@ def invoke(payload: dict):
     
     # Get the prompt from the payload, or use a default if not provided
     user_prompt = payload.get("prompt", "Hello AgentCore")
-    # Set the task description to the prompt received
-    task.description = user_prompt
+
+    # Create a brand-new Task for this turn only
+    turn_task = Task(
+        agent=assistant,
+        description=user_prompt,
+        expected_output="An accurate, concise answer."
+    )
+
+    # Create a new crew with the current task for this invocation
+    current_crew = Crew(
+        agents=[assistant],
+        tasks=[turn_task],
+        process=Process.sequential
+    )
+
     # Run the Crew and get the result
-    result = crew.kickoff()
+    result = current_crew.kickoff()
+
     # Return the result as a JSON-serializable dict
     return {"result": result.raw}
 
