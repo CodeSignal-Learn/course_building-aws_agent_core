@@ -4,10 +4,7 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 # Create a Bedrock LLM wrapper using environment variables
 llm = LLM(
-    model=os.getenv("MODEL", "us.anthropic.claude-sonnet-4-20250514-v1:0"),
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-    aws_region_name=os.getenv("AWS_REGION")
+    model=os.getenv("MODEL", "us.anthropic.claude-sonnet-4-20250514-v1:0")
 )
 
 # Define an agent with no tools, just the Bedrock LLM
