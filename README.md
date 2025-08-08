@@ -66,14 +66,6 @@ agentcore invoke '{"prompt":"What is AWS Bedrock?"}' --local
 
 > `agentcore invoke` takes a JSON payload, calls the agent runtime at `/invocations`, and streams back the response. When you pass --local, the request is routed to the container that launch --local started on `http://localhost:8080`
 
-
-#### 4. Stop the local runtime
-```bash
-agentcore stop
-```
-
-> Stops the local container started by `launch --local`.
-
 ## Working with Agent Core CLI (AWS)
 
 Before you can deploy to the cloud you must have:
