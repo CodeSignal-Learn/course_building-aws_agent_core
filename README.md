@@ -77,8 +77,6 @@ Before you can deploy to the cloud you must have:
 | **An *execution-role* for the runtime container**<br>(or let the toolkit create one)                                                           | The container assumes this role at run-time so it can pull the image, write CloudWatch logs, and call `bedrock:InvokeModel`. A minimal policy needs `ecr:Get*`, `logs:*`, `xray:*`, and the specific Bedrock model actions you plan to use. |
 | **Docker running locally**                                                                                                   | The CLI builds a container image before it is pushed to Amazon ECR.                                                                                                                                                                           |
 
-> **Tip** If you already have a least-privilege execution role, supply its ARN up front with `--execution-role`; otherwise the toolkit will generate one for you automatically. ([AWS Open Source][3], [AWS Documentation][4])
-
 ### 1. Configure the Agent
 
 ```bash
