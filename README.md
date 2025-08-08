@@ -168,3 +168,9 @@ python utils/cleanup.py
 
 > This will delete every agentcore runtime, ecr and codebuild project.
 
+
+## AWS Console Shortcuts
+
+- **Bedrock Agent Core – Agents**: [Open console](https://us-east-1.console.aws.amazon.com/bedrock-agentcore/agents)
+- **Amazon ECR – Private repositories**: [Open console](https://us-east-1.console.aws.amazon.com/ecr/private-registry/repositories?region=us-east-1)
+- **AWS CodeBuild – Projects**: [Open console](https://us-east-1.console.aws.amazon.com/codesuite/codebuild/projects)
