@@ -1,3 +1,12 @@
+# Project Structure
+
+- **src**: Core application code and AgentCore entrypoint
+  - `src/main.py`: Defines the CrewAI agent and the `invoke(payload)` function decorated as the AgentCore entrypoint.
+- **utils**: Helper scripts for local testing and AWS housekeeping
+  - `utils/invoke.py`: Sends a sample request to a locally running server for quick verification.
+  - `utils/list_runtimes.py`: Lists AgentCore runtimes in your AWS account and `AWS_REGION` using the `bedrock-agentcore-control` client.
+  - `utils/cleanup.py`: Deletes AgentCore runtimes and their related ECR repository and CodeBuild project for the app name in your `AWS_REGION`.
+
 # Quick Start
 
 ## Setup
@@ -26,11 +35,11 @@ export AWS_SECRET_ACCESS_KEY=...
 ### 1. Run your agent core server locally
 
 ```bash
-python main.py
+python src/main.py
 ```
 ### 2. Test the server with a request
 ```bash
-python test.py
+python utils/invoke.py
 ```
 
 ## Working with Agent Core CLI (Locally)
@@ -38,14 +47,14 @@ python test.py
 ### 1. Set up your agent project for deployment:
 
 ```bash
-agentcore configure --entrypoint main.py --name crew_demo
+agentcore configure --entrypoint src/main.py --name crew_demo
 ```
 
 > `agentcore configure` inspects your entry point script, gathers details you pass (agent name, region, IAM execution-role, required packages), and writes them to a `.bedrock_agentcore.yaml` blueprint. With that blueprint in place, later commands can build and deploy the agent without asking more questions.
 
 ### 1.1 (Optional) Add --disable-otel to silence the OpenTelemetry noise 
 ```bash
-agentcore configure --disable-otel --entrypoint main.py --name crew_demo
+agentcore configure --disable-otel --entrypoint src/main.py --name crew_demo
 ```
 
 ### 2. Deploy locally with your env variables and chosen model
@@ -80,7 +89,7 @@ Before you can deploy to the cloud you must have:
 ### 1. Configure the Agent
 
 ```bash
-agentcore configure --entrypoint main.py --name crew_demo
+agentcore configure --entrypoint src/main.py --name crew_demo
 ```
 
 > **Tip** For some reason I could only make launch to AWS work when I deleted the previous created `.bedrock_agentcore.yaml` and ran configure again. I think it was because of some ID it created in that file.
@@ -127,6 +136,14 @@ aws bedrock-agentcore list-agent-runtimes
 
 > This should list all the agent runtimes we create in Agent Core, but the bedrock-agentcore commands are not yet supported in the AWS CLI, althought there's documentation for that :/
 
+#### List AgentCore runtimes (Boto3)
+
+```bash
+python utils/list_runtimes.py
+```
+
+> Lists all AgentCore runtimes in the configured `AWS_REGION` using the `bedrock-agentcore-control` API.
+
 #### List ECR repositories 
 
 ```bash
@@ -146,8 +163,8 @@ aws codebuild list-projects
 ### 8. Cleanup
 
 ```bash
-python cleanup.py
+python utils/cleanup.py
 ```
 
-> This will list every agent runtime, delete the runtime, ecr and codebuild project.
+> This will delete every agentcore runtime, ecr and codebuild project.
 

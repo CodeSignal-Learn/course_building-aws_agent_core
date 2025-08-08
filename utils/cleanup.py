@@ -1,5 +1,4 @@
 import os
-import json
 
 import boto3
 
@@ -18,8 +17,12 @@ def list_agent_runtimes():
     return response.get("agentRuntimes", [])
 
 def delete_agent_runtime(runtime_id):
-    response = ac.delete_agent_runtime(agentRuntimeId=runtime_id)
-    return response["status"]
+    try:
+        print(f"Deleting runtime {runtime_id}")
+        response = ac.delete_agent_runtime(agentRuntimeId=runtime_id)
+        print(f"Status after deletion: {response['status']}")
+    except Exception as error:
+        print(f"Skip runtime delete for {runtime_id}: {error}")
 
 
 def delete_ecr_repository_for_app(app_name):
@@ -47,21 +50,6 @@ def delete_codebuild_project_by_name(project_name):
     except Exception as error:
         print(f"Skip CodeBuild delete for {project_name}: {error}")
 
-def print_runtime_summary(runtime: dict):
-    print(f"ID: {runtime.get('agentRuntimeId')}")
-    print(f"Name: {runtime.get('agentRuntimeName')}")
-    print(f"ARN: {runtime.get('agentRuntimeArn')}")
-    print(f"Version: {runtime.get('agentRuntimeVersion')}")
-    print(f"Status: {runtime.get('status')}")
-    print(f"Last Updated At: {runtime.get('lastUpdatedAt')}")
-
-def print_runtime_details(runtime_id: str):
-    """Attempt to fetch full runtime details, which may include artifact info like containerUri."""
-    resp = ac.get_agent_runtime(agentRuntimeId=runtime_id)
-
-    print("Runtime Details:")
-    print(json.dumps(resp, indent=2))
-
 
 if __name__ == "__main__":
     # List all agent runtimes
@@ -70,12 +58,8 @@ if __name__ == "__main__":
     if not runtimes:
         print("No AgentCore runtimes found.")
     else:
-        print(f"Region: {REGION}")
-        print("Found the following runtimes:")
+        print(f"Deleting the following runtimes in {REGION}:")
         for runtime in runtimes:
-            # Print the runtime summary and details
-            print_runtime_summary(runtime)
-
             # Get the runtime ID and app name
             runtime_id = runtime.get('agentRuntimeId')
             app_name = runtime.get('agentRuntimeName')
@@ -83,9 +67,7 @@ if __name__ == "__main__":
 
             if status != 'DELETING':
                 # Delete the agent runtime
-                print(f"Deleting runtime {runtime_id}")
-                new_status = delete_agent_runtime(runtime_id)
-                print(f"Status after deletion: {new_status}")
+                delete_agent_runtime(runtime_id)
 
             delete_ecr_repository_for_app(app_name)
             delete_codebuild_project_for_app(app_name)
