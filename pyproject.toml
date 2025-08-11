@@ -1,0 +1,20 @@
+[project]
+name = "course-building-aws-agent-core"
+version = "0.1.0"
+description = "AWS Bedrock AgentCore sample using Strands agents, managed with uv."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "bedrock-agentcore==0.1.1",
+  "strands-agents==1.4.0",
+  "strands-agents-tools==0.2.3",
+  "boto3>=1.34",
+  "requests>=2.31",
+]
+
+[dependency-groups]
+dev = [
+  "bedrock-agentcore-starter-toolkit==0.1.3",
+]
+
+

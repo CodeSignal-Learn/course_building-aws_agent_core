@@ -9,37 +9,52 @@
 
 # Quick Start
 
-## Setup
+## Setup (uv)
 
-### 1. Install agentcore CLI:
+### 1. Install uv
 ```bash
-pip install bedrock-agentcore-starter-toolkit==0.1.3
+# macOS (Homebrew)
+brew install uv
+
+# or universal installer
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 2. Install other pip requirements
+### 2. Create and sync the virtual environment
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
-### 3. Export AWS credentials
+### 3. (Optional) Install AgentCore CLI into the project env
+```bash
+uv sync --group dev
+```
+You can then run CLI commands as `uv run agentcore ...`.
+
+Alternatively, use an ephemeral CLI without adding it to the env:
+```bash
+uvx --from bedrock-agentcore-starter-toolkit==0.1.3 agentcore --help
+```
+
+### 4. Export AWS credentials
 ```bash
 export AWS_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
 ```
 
-### 4. Open Docker if you want to work with Agent Core CLI
+### 5. Open Docker if you want to work with Agent Core CLI
 
 ## Local Testing
 
 ### 1. Run your agent core server locally
 
 ```bash
-python src/main.py
+uv run python src/main.py
 ```
 ### 2. Test the server with a request
 ```bash
-python utils/invoke.py
+uv run python utils/invoke.py
 ```
 
 ## Working with Agent Core CLI (Locally)
@@ -47,19 +62,19 @@ python utils/invoke.py
 ### 1. Set up your agent project for deployment:
 
 ```bash
-agentcore configure --entrypoint src/main.py --name crew_demo
+uv run agentcore configure --entrypoint src/main.py --name strands_demo
 ```
 
 > `agentcore configure` inspects your entry point script, gathers details you pass (agent name, region, IAM execution-role, required packages), and writes them to a `.bedrock_agentcore.yaml` blueprint. With that blueprint in place, later commands can build and deploy the agent without asking more questions.
 
-### 1.1 (Optional) Add --disable-otel to silence the OpenTelemetry noise 
+### 1.1 (Optional) Add --disable-otel to silence the OpenTelemetry noise
 ```bash
-agentcore configure --disable-otel --entrypoint src/main.py --name crew_demo
+uv run agentcore configure --disable-otel --entrypoint src/main.py --name strands_demo
 ```
 
 ### 2. Deploy locally with your env variables and chosen model
 ```bash
-agentcore launch --local \
+uv run agentcore launch --local \
    --env AWS_REGION=$AWS_REGION \
    --env AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
    --env AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
@@ -70,7 +85,7 @@ agentcore launch --local \
 
 ### 3. Invoke agent locally
 ```bash
-agentcore invoke '{"prompt":"What is AWS Bedrock?"}' --local
+uv run agentcore invoke '{"prompt":"What is AWS Bedrock?"}' --local
 ```
 
 > `agentcore invoke` takes a JSON payload, calls the agent runtime at `/invocations`, and streams back the response. When you pass --local, the request is routed to the container that launch --local started on `http://localhost:8080`
@@ -89,7 +104,7 @@ Before you can deploy to the cloud you must have:
 ### 1. Configure the Agent
 
 ```bash
-agentcore configure --entrypoint src/main.py --name crew_demo
+uv run agentcore configure --entrypoint src/main.py --name strands_demo
 ```
 
 > **Tip** For some reason I could only make launch to AWS work when I deleted the previous created `.bedrock_agentcore.yaml` and ran configure again. I think it was because of some ID it created in that file.
@@ -97,7 +112,7 @@ agentcore configure --entrypoint src/main.py --name crew_demo
 ### 2. Launch the Agent to AWS
 
 ```bash
-agentcore launch --env MODEL="us.anthropic.claude-sonnet-4-20250514-v1:0"
+uv run agentcore launch --env MODEL="us.anthropic.claude-sonnet-4-20250514-v1:0"
 ```
 
 > This builds the container, pushes it to ECR, and creates the AgentCore runtime. It will wait until the runtime is marked `READY`.
@@ -105,7 +120,7 @@ agentcore launch --env MODEL="us.anthropic.claude-sonnet-4-20250514-v1:0"
 ### 3. Check Agent Status
 
 ```bash
-agentcore status
+uv run agentcore status
 ```
 
 > Prints the runtime ARN, status, image digest, and timestamp. Use `--verbose` to get the full JSON response.
@@ -113,7 +128,7 @@ agentcore status
 ### 4. Invoke the Deployed Agent
 
 ```bash
-agentcore invoke '{"prompt":"What is AWS Bedrock?"}'
+uv run agentcore invoke '{"prompt":"What is AWS Bedrock?"}'
 ```
 
 > Sends a request to the deployed runtime using the `InvokeAgentRuntime` API. Add `--session-id <id>` to persist memory between calls.
@@ -121,7 +136,7 @@ agentcore invoke '{"prompt":"What is AWS Bedrock?"}'
 ### 6. Update and Redeploy After Code Changes
 
 ```bash
-agentcore launch
+uv run agentcore launch
 ```
 
 > Rebuilds the image and replaces the running runtime. No need to reconfigure.
@@ -139,18 +154,18 @@ aws bedrock-agentcore list-agent-runtimes
 #### List AgentCore runtimes (Boto3)
 
 ```bash
-python utils/list_runtimes.py
+uv run python utils/list_runtimes.py
 ```
 
 > Lists all AgentCore runtimes in the configured `AWS_REGION` using the `bedrock-agentcore-control` API.
 
-#### List ECR repositories 
+#### List ECR repositories
 
 ```bash
 aws ecr describe-repositories
 ```
 
-> This will list the repositories created for the Docker image of our app, it will be named something like `bedrock-agentcore-<app_name>`, in our case `bedrock-agentcore-crew_demo`
+> This will list the repositories created for the Docker image of our app, it will be named something like `bedrock-agentcore-<app_name>`, in our case `bedrock-agentcore-strands_demo`
 
 #### List CodeBuild projects
 
@@ -158,13 +173,22 @@ aws ecr describe-repositories
 aws codebuild list-projects
 ```
 
-> Lists all AWS CodeBuild projects in your account. When you launch to AWS, the Agent Core CLI creates a CodeBuild project to build and push your Docker image. It’s usually named `bedrock-agentcore-<app_name>-builder` (for example, `bedrock-agentcore-crew_demo-builder`). You’ll use this name when cleaning up resources.
+> Lists all AWS CodeBuild projects in your account. When you launch to AWS, the Agent Core CLI creates a CodeBuild project to build and push your Docker image. It’s usually named `bedrock-agentcore-<app_name>-builder` (for example, `bedrock-agentcore-strands_demo-builder`). You’ll use this name when cleaning up resources.
 
 ### 8. Cleanup
 
 ```bash
-python utils/cleanup.py
+uv run python utils/cleanup.py
 ```
+
+## Dependency management with uv
+
+- Add a new dependency: `uv add <package>`
+- Add a dev-only dependency: `uv add --group dev <package>`
+- Remove a dependency: `uv remove <package>`
+- Update the lockfile: `uv lock`
+- Commit `uv.lock` to version control; `uv run` and `uv sync` will keep it up to date.
+
 
 > This will delete every agentcore runtime, ecr and codebuild project.
 
