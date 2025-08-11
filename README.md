@@ -128,13 +128,13 @@ agentcore launch
 
 ### 7. List resources created in AWS
 
-#### List agent runtimes (Not supported in CLI yet)
+#### List agent runtimes
 
 ```bash
 aws bedrock-agentcore list-agent-runtimes
 ```
 
-> This should list all the agent runtimes we create in Agent Core, but the bedrock-agentcore commands are not yet supported in the AWS CLI, althought there's documentation for that :/
+> This should list all the agent runtimes we create in Agent Core.
 
 #### List AgentCore runtimes (Boto3)
 
