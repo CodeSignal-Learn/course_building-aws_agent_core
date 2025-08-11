@@ -1,7 +1,7 @@
 # Project Structure
 
 - **src**: Core application code and AgentCore entrypoint
-  - `src/main.py`: Defines the CrewAI agent and the `invoke(payload)` function decorated as the AgentCore entrypoint.
+  - `src/main.py`: Defines the agent and the `invoke(payload)` function decorated as the AgentCore entrypoint.
 - **utils**: Helper scripts for local testing and AWS housekeeping
   - `utils/invoke.py`: Sends a sample request to a locally running server for quick verification.
   - `utils/list_runtimes.py`: Lists AgentCore runtimes in your AWS account and `AWS_REGION` using the `bedrock-agentcore-control` client.
