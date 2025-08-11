@@ -8,9 +8,11 @@ REGION = os.getenv("AWS_REGION", "us-east-1")
 # Create AgentCore client
 ac = boto3.client("bedrock-agentcore-control", region_name=REGION)
 
+
 def list_agent_runtimes():
     response = ac.list_agent_runtimes()
     return response.get("agentRuntimes", [])
+
 
 def print_runtime_summary(runtime: dict):
     print(f"ID: {runtime.get('agentRuntimeId')}")
@@ -19,6 +21,7 @@ def print_runtime_summary(runtime: dict):
     print(f"Version: {runtime.get('agentRuntimeVersion')}")
     print(f"Status: {runtime.get('status')}")
     print(f"Last Updated At: {runtime.get('lastUpdatedAt')}")
+
 
 if __name__ == "__main__":
     # List all agent runtimes

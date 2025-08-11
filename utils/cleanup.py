@@ -12,9 +12,11 @@ ecr = boto3.client("ecr", region_name=REGION)
 # Create CodeBuild client
 codebuild = boto3.client("codebuild", region_name=REGION)
 
+
 def list_agent_runtimes():
     response = ac.list_agent_runtimes()
     return response.get("agentRuntimes", [])
+
 
 def delete_agent_runtime(runtime_id):
     try:
@@ -61,11 +63,11 @@ if __name__ == "__main__":
         print(f"Deleting the following runtimes in {REGION}:")
         for runtime in runtimes:
             # Get the runtime ID and app name
-            runtime_id = runtime.get('agentRuntimeId')
-            app_name = runtime.get('agentRuntimeName')
-            status = runtime.get('status')
+            runtime_id = runtime.get("agentRuntimeId")
+            app_name = runtime.get("agentRuntimeName")
+            status = runtime.get("status")
 
-            if status != 'DELETING':
+            if status != "DELETING":
                 # Delete the agent runtime
                 delete_agent_runtime(runtime_id)
 
