@@ -9,11 +9,6 @@ bedrock_model = BedrockModel(
     region_name=os.getenv("AWS_REGION", "us-east-1")
 )
 
-# Initialize Strands agent with the explicit Bedrock model
-agent = Agent(
-    model=bedrock_model
-)
-
 # Initialize Strands agent with the explicit Bedrock model and system prompt
 agent = Agent(
     model=bedrock_model,
