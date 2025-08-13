@@ -6,14 +6,9 @@ from botocore.config import Config
 import boto3
 
 
-def choose_model() -> str:
-    # Shopping Assistant: pick a model via env override
-    return os.getenv("MODEL", "us.anthropic.claude-sonnet-4-20250514-v1:0")
-
-
 def main() -> int:
     region = os.getenv("AWS_REGION", "us-east-1")
-    model_id = choose_model()
+    model_id = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 
     # Safe defaults
     inference_defaults: Dict[str, Any] = {

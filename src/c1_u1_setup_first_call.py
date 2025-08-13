@@ -13,11 +13,6 @@ def main() -> int:
     client = boto3.client(
         "bedrock-runtime",
         region_name=region,
-        config=Config(
-            connect_timeout=5,
-            read_timeout=60,
-            retries={"max_attempts": 3, "mode": "standard"},
-        ),
     )
 
     system_prompt = (
@@ -43,11 +38,6 @@ def main() -> int:
             modelId=model_id,
             messages=messages,
             system=[{"text": system_prompt}],
-            inferenceConfig={
-                "maxTokens": 256,
-                "temperature": 0.2,
-                "topP": 0.9,
-            },
         )
     except Exception as exc:  # noqa: BLE001
         print(f"Converse call failed: {exc}", file=sys.stderr)
