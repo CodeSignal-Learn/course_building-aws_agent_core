@@ -36,9 +36,7 @@ def main() -> int:
         ),
     )
 
-    system_prompt = (
-        "You are Shopping Assistant. Keep outputs factual and concise."
-    )
+    system_prompt = "You are Shopping Assistant. Keep outputs factual and concise."
     messages = [
         {
             "role": "user",
@@ -64,9 +62,7 @@ def main() -> int:
         print(f"Converse failed: {exc}", file=sys.stderr)
         return 1
 
-    content_parts = result.get("output", {}).get("message", {}).get(
-        "content", []
-    )
+    content_parts = result.get("output", {}).get("message", {}).get("content", [])
     text = "".join(part.get("text", "") for part in content_parts)
     print(text.strip())
     return 0

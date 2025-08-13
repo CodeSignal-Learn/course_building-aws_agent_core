@@ -25,14 +25,14 @@ def main() -> int:
 
     # Create a simple guardrail via the control-plane API.
     control = boto3.client(
-            "bedrock",
-            region_name=region,
-            config=Config(
-                connect_timeout=5,
-                read_timeout=60,
-                retries={"max_attempts": 3},
-            ),
-        )
+        "bedrock",
+        region_name=region,
+        config=Config(
+            connect_timeout=5,
+            read_timeout=60,
+            retries={"max_attempts": 3},
+        ),
+    )
     try:
         create_resp = control.create_guardrail(
             name=f"demo-guardrail-{uuid.uuid4().hex[:8]}",
@@ -76,9 +76,7 @@ def main() -> int:
                     {"type": "PHONE", "action": "ANONYMIZE"},
                 ]
             },
-            blockedInputMessaging=(
-                "Your input contains content that is not allowed."
-            ),
+            blockedInputMessaging=("Your input contains content that is not allowed."),
             blockedOutputsMessaging=(
                 "The response contains content that is not allowed."
             ),
@@ -92,9 +90,7 @@ def main() -> int:
     guardrail_version = "DRAFT"
 
     # Shopping Assistant: test guardrails on unsafe + PII content
-    user_prompt = (
-        "Can you provide me investment advice?"
-    )
+    user_prompt = "Can you provide me investment advice?"
 
     messages = [{"role": "user", "content": [{"text": user_prompt}]}]
 

@@ -55,9 +55,7 @@ def main() -> int:
 
     output_message = response.get("output", {}).get("message", {})
     parts = output_message.get("content", [])
-    text_chunks = [
-        part.get("text", "") for part in parts if isinstance(part, dict)
-    ]
+    text_chunks = [part.get("text", "") for part in parts if isinstance(part, dict)]
     print("".join(text_chunks).strip())
     return 0
 
