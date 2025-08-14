@@ -9,178 +9,236 @@ from botocore.exceptions import ClientError
 def setup_bedrock_knowledge_base():
     """
     Complete setup of Bedrock Knowledge Base with S3 Vectors storage
+    using manual embedding computation and vector insertion
     """
 
-    region_name = os.getenv("AWS_REGION")
+    region_name = os.getenv("AWS_REGION", "us-east-1")
 
     # Initialize AWS clients
-    s3_client = boto3.client("s3")
-    s3_vectors_client = boto3.client("s3vectors")
-    bedrock_agent_client = boto3.client("bedrock-agent")
-    bedrock_runtime_client = boto3.client("bedrock-agent-runtime")
+    s3_vectors_client = boto3.client("s3vectors", region_name=region_name)
+    bedrock_agent_client = boto3.client("bedrock-agent", region_name=region_name)
+    bedrock_runtime_client = boto3.client("bedrock-runtime", region_name=region_name)
+    bedrock_agent_runtime_client = boto3.client(
+        "bedrock-agent-runtime", region_name=region_name
+    )
 
     # Configuration
-    bucket_name = f"bedrock-kb-bucket-{uuid.uuid4().hex[:8]}"
     vector_bucket_name = f"bedrock-vector-bucket-{uuid.uuid4().hex[:8]}"
     vector_index_name = f"bedrock-vector-index-{uuid.uuid4().hex[:8]}"
     kb_name = f"bedrock-knowledge-base-{uuid.uuid4().hex[:8]}"
-    kb_role_arn = f"arn:aws:iam::605926690821:role/kb-service-role"
-    # Replace `YOUR_ACCOUNT_ID` and `YOUR_ROLE` in the `kb_role_arn` variable with your actual AWS account ID and IAM role name.
+    kb_role_arn = f"arn:aws:iam::{os.getenv('AWS_ACCOUNT_ID')}:role/kb-service-role"
+
+    embedding_model_id = "amazon.titan-embed-text-v2:0"
+    embedding_dimensions = 1024
 
     try:
-        # Step 1: Create S3 bucket for documents
-        print("Step 1: Creating S3 bucket for documents...")
-        s3_client.create_bucket(Bucket=bucket_name)
-        print(f"✓ Created S3 bucket: {bucket_name}")
+        # Step 1: Create S3 Vector Bucket for embeddings storage
+        print("Step 1: Creating S3 Vector Bucket...")
+        _ = s3_vectors_client.create_vector_bucket(vectorBucketName=vector_bucket_name)
+        print(f"✓ Created S3 Vector Bucket: {vector_bucket_name}")
 
-        # Step 2: Upload sample documents to S3 bucket
-        print("\nStep 2: Uploading documents to S3 bucket...")
+        # Step 2: Create Vector Index
+        print("\nStep 2: Creating Vector Index...")
+        _ = s3_vectors_client.create_index(
+            vectorBucketName=vector_bucket_name,
+            indexName=vector_index_name,
+            dimension=embedding_dimensions,
+            distanceMetric="cosine",
+            dataType="float32",
+        )
+        print(f"✓ Created Vector Index: {vector_index_name}")
+
+        # Wait for vector index to be active and get its ARN
+        print("⏳ Waiting for vector index to be ready...")
+        index_ready = False
+        while not index_ready:
+            indexes_response = s3_vectors_client.list_indexes(
+                vectorBucketName=vector_bucket_name
+            )
+            if indexes_response["indexes"]:
+                index_arn = indexes_response["indexes"][0]["indexArn"]
+                print(f"✓ Vector Index ARN: {index_arn}")
+                index_ready = True
+            else:
+                print("   Index not yet available, waiting...")
+                time.sleep(10)
+
+        # Step 3: Prepare sample documents and generate embeddings
+        print("\nStep 3: Generating embeddings for sample documents...")
         sample_documents = [
             {
-                "key": "doc1.txt",
-                "content": "Amazon Web Services (AWS) is a comprehensive cloud computing platform. It offers over 200 services including computing, storage, databases, networking, analytics, machine learning, and artificial intelligence.",
+                "key": "doc1",
+                "content": (
+                    "Amazon Web Services (AWS) is a comprehensive cloud computing platform. "
+                    "It offers over 200 services including computing, storage, databases, "
+                    "networking, analytics, machine learning, and artificial intelligence."
+                ),
+                "metadata": {"title": "AWS Overview", "category": "cloud-computing"},
             },
             {
-                "key": "doc2.txt",
-                "content": "Amazon Bedrock is a fully managed service that offers a choice of high-performing foundation models (FMs) from leading AI companies like AI21 Labs, Anthropic, Cohere, Meta, Stability AI, and Amazon via a single API.",
+                "key": "doc2",
+                "content": (
+                    "Amazon Bedrock is a fully managed service that offers a choice of "
+                    "high-performing foundation models (FMs) from leading AI companies like "
+                    "AI21 Labs, Anthropic, Cohere, Meta, Stability AI, and Amazon via a single API."
+                ),
+                "metadata": {"title": "Amazon Bedrock", "category": "ai-ml"},
             },
             {
-                "key": "doc3.txt",
-                "content": "Amazon Bedrock Knowledge Bases allows you to give FMs and agents contextual information from your company's private data sources for Retrieval Augmented Generation (RAG) to deliver more relevant, accurate, and customized responses.",
+                "key": "doc3",
+                "content": (
+                    "Amazon Bedrock Knowledge Bases allows you to give FMs and agents "
+                    "contextual information from your company's private data sources for "
+                    "Retrieval Augmented Generation (RAG) to deliver more relevant, accurate, "
+                    "and customized responses."
+                ),
+                "metadata": {"title": "Knowledge Bases", "category": "rag"},
             },
         ]
 
+        vectors_to_insert = []
+
         for doc in sample_documents:
-            s3_client.put_object(
-                Bucket=bucket_name,
-                Key=doc["key"],
-                Body=doc["content"].encode("utf-8"),
-                ContentType="text/plain",
+            print(f"   Generating embedding for: {doc['key']}")
+
+            # Generate embedding using Bedrock
+            embedding_request = {
+                "inputText": doc["content"],
+                "dimensions": embedding_dimensions,
+                "normalize": True,
+            }
+
+            response = bedrock_runtime_client.invoke_model(
+                modelId=embedding_model_id, body=json.dumps(embedding_request)
             )
-            print(f"✓ Uploaded: {doc['key']}")
 
-        # Step 3: Create S3 Vector Bucket for embeddings storage
-        print("\nStep 3: Creating S3 Vector Bucket...")
-        vector_bucket_response = s3_vectors_client.create_vector_bucket(
-            vectorBucketName=vector_bucket_name
-        )
+            response_body = json.loads(response["body"].read())
+            embedding = response_body["embedding"]
 
-        print(f"✓ Created S3 Vector Bucket: {vector_bucket_name}")
+            # Convert to float32 as required by S3 Vectors
+            embedding_float32 = [float(x) for x in embedding]
 
-        # Step 4: Create Vector Index
-        print("\nStep 4: Creating Vector Index...")
-        vector_index_response = s3_vectors_client.create_index(
+            vectors_to_insert.append(
+                {
+                    "key": doc["key"],
+                    "data": {"float32": embedding_float32},
+                    "metadata": {"source_text": doc["content"], **doc["metadata"]},
+                }
+            )
+            print(
+                f"   ✓ Generated embedding for: {doc['key']} ({len(embedding_float32)} dimensions)"
+            )
+
+        # Step 4: Insert vectors into S3 Vectors index
+        print("\nStep 4: Inserting vectors into S3 Vectors index...")
+        s3_vectors_client.put_vectors(
             vectorBucketName=vector_bucket_name,
             indexName=vector_index_name,
-            dimension=1024,  # For amazon.titan-embed-text-v2:0
-            distanceMetric="cosine",
-            dataType="float32"
+            vectors=vectors_to_insert,
         )
-
-        print(f"✓ Created Vector Index: {vector_index_name}")
-
-        # Wait for vector index to be active
-        index_arn = s3_vectors_client.list_indexes(
-            vectorBucketName=vector_bucket_name
-        )["indexes"][0]["indexArn"]
-
-        print(f"✓ Vector Index ARN: {index_arn}")
+        print(f"✓ Inserted {len(vectors_to_insert)} vectors into the index")
 
         # Step 5: Create Bedrock Knowledge Base with S3 Vectors
         print("\nStep 5: Creating Bedrock Knowledge Base...")
-        kb_response = bedrock_agent_client.create_knowledge_base(
-            name=kb_name,
-            description="Knowledge base using S3 Vectors for cost-effective storage",
-            roleArn=kb_role_arn,
-            knowledgeBaseConfiguration={
-                "type": "VECTOR",
-                "vectorKnowledgeBaseConfiguration": {
-                    "embeddingModelArn": f"arn:aws:bedrock:{region_name}::foundation-model/amazon.titan-embed-text-v2:0",
-                    "embeddingModelConfiguration": {
-                        "bedrockEmbeddingModelConfiguration": {"dimensions": 1024}
+        try:
+            kb_response = bedrock_agent_client.create_knowledge_base(
+                name=kb_name,
+                description=(
+                    "Knowledge base using S3 Vectors for cost-effective storage "
+                    "with manual vector management"
+                ),
+                roleArn=kb_role_arn,
+                knowledgeBaseConfiguration={
+                    "type": "VECTOR",
+                    "vectorKnowledgeBaseConfiguration": {
+                        "embeddingModelArn": (
+                            f"arn:aws:bedrock:{region_name}::foundation-model/{embedding_model_id}"
+                        ),
+                        "embeddingModelConfiguration": {
+                            "bedrockEmbeddingModelConfiguration": {
+                                "dimensions": embedding_dimensions
+                            }
+                        },
                     },
                 },
-            },
-            storageConfiguration={
-                "type": "S3_VECTORS",
-                "s3VectorsConfiguration": {
-                    # "indexName": vector_index_name,
-                    "indexArn": index_arn,
-                    # "vectorBucketArn": vector_bucket_arn,
+                storageConfiguration={
+                    "type": "S3_VECTORS",
+                    "s3VectorsConfiguration": {
+                        "indexArn": index_arn,
+                    },
                 },
-            },
-            clientToken=str(uuid.uuid4()),
-        )
+                clientToken=str(uuid.uuid4()),
+            )
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"]["Message"]
+
+            if error_code == "AccessDeniedException":
+                print(f"✗ Permission Error: {error_message}")
+            elif error_code == "ValidationException":
+                print(f"✗ Validation Error: {error_message}")
+            else:
+                print(f"✗ AWS Error ({error_code}): {error_message}")
+            raise
 
         knowledge_base_id = kb_response["knowledgeBase"]["knowledgeBaseId"]
         print(f"✓ Created Knowledge Base: {kb_name}")
         print(f"✓ Knowledge Base ID: {knowledge_base_id}")
 
-        # Step 6: Connect S3 bucket to Knowledge Base (Create Data Source)
-        # Alternative: compute embeddings and store them using s3vectors
-        print("\nStep 6: Connecting S3 bucket to Knowledge Base...")
-        data_source_response = bedrock_agent_client.create_data_source(
-            knowledgeBaseId=knowledge_base_id,
-            name=f"s3-data-source-{uuid.uuid4().hex[:8]}",
-            description="S3 data source for knowledge base",
-            dataSourceConfiguration={
-                "type": "S3",
-                "s3Configuration": {
-                    "bucketArn": f"arn:aws:s3:::{bucket_name}",
-                },
-            },
-            vectorIngestionConfiguration={
-                "chunkingConfiguration": {
-                    "chunkingStrategy": "FIXED_SIZE",
-                    "fixedSizeChunkingConfiguration": {
-                        "maxTokens": 300,
-                        "overlapPercentage": 20,
-                    },
-                }
-            },
-            clientToken=str(uuid.uuid4()),
-        )
-
-        data_source_id = data_source_response["dataSource"]["dataSourceId"]
-        print(f"✓ Created Data Source: {data_source_id}")
-
-        # Step 7: Start ingestion job
-        # Should not be needed once we switch to S3 Vectors
-        print("\nStep 7: Starting ingestion job...")
-        ingestion_response = bedrock_agent_client.start_ingestion_job(
-            knowledgeBaseId=knowledge_base_id,
-            dataSourceId=data_source_id,
-            clientToken=str(uuid.uuid4()),
-        )
-
-        ingestion_job_id = ingestion_response["ingestionJob"]["ingestionJobId"]
-        print(f"✓ Started ingestion job: {ingestion_job_id}")
-
-        # Wait for ingestion to complete
-        print("⏳ Waiting for ingestion to complete...")
-        while True:
-            job_status = bedrock_agent_client.get_ingestion_job(
-                knowledgeBaseId=knowledge_base_id,
-                dataSourceId=data_source_id,
-                ingestionJobId=ingestion_job_id,
+        # Wait for knowledge base to be ready
+        print("⏳ Waiting for knowledge base to be active...")
+        kb_ready = False
+        while not kb_ready:
+            kb_status = bedrock_agent_client.get_knowledge_base(
+                knowledgeBaseId=knowledge_base_id
             )
-            status = job_status["ingestionJob"]["status"]
-            print(f"   Ingestion status: {status}")
+            status = kb_status["knowledgeBase"]["status"]
+            print(f"   Knowledge Base status: {status}")
 
-            if status == "COMPLETE":
-                print("✓ Ingestion completed successfully!")
-                break
+            if status == "ACTIVE":
+                print("✓ Knowledge Base is active!")
+                kb_ready = True
             elif status == "FAILED":
-                print("✗ Ingestion failed!")
+                raise RuntimeError("✗ Knowledge Base creation failed!")
+
+            time.sleep(5)
+
+        # Step 6: Test vector search directly in S3 Vectors
+        print("\nStep 6: Testing direct vector search...")
+        test_query = "What is Amazon Bedrock?"
+
+        # Generate embedding for test query
+        query_embedding_request = {
+            "inputText": test_query,
+            "dimensions": embedding_dimensions,
+            "normalize": True,
+        }
+
+        query_response = bedrock_runtime_client.invoke_model(
+            modelId=embedding_model_id, body=json.dumps(query_embedding_request)
+        )
+
+        query_response_body = json.loads(query_response["body"].read())
+        query_embedding = [float(x) for x in query_response_body["embedding"]]
+
+        # Search vectors
+        search_response = s3_vectors_client.query_vectors(
+            vectorBucketName=vector_bucket_name,
+            indexName=vector_index_name,
+            queryVector={"float32": query_embedding},
+            topK=3,
+        )
+
+        print(f"Direct S3 Vectors search results for '{test_query}':")
+        for i, result in enumerate(search_response.get("matches", []), 1):
+            print(f"   {i}. Key: {result['key']}, Score: {result['similarity']:.4f}")
+            if "metadata" in result:
                 print(
-                    f"Failure reasons: {job_status['ingestionJob'].get('failureReasons', [])}"
+                    f"      Source: {result['metadata'].get('source_text', 'N/A')[:100]}..."
                 )
-                return
 
-            time.sleep(30)
-
-        # Step 8: Query the Knowledge Base
-        print("\nStep 8: Querying the Knowledge Base...")
+        # Step 7: Query the Knowledge Base using Bedrock
+        print("\nStep 7: Querying the Knowledge Base through Bedrock...")
         queries = [
             "What is Amazon Bedrock?",
             "How does AWS help with cloud computing?",
@@ -191,13 +249,18 @@ def setup_bedrock_knowledge_base():
             print(f"\n--- Query {i}: {query} ---")
 
             try:
-                response = bedrock_runtime_client.retrieve_and_generate(
+                response = bedrock_agent_runtime_client.retrieve_and_generate(
                     input={"text": query},
                     retrieveAndGenerateConfiguration={
                         "type": "KNOWLEDGE_BASE",
                         "knowledgeBaseConfiguration": {
                             "knowledgeBaseId": knowledge_base_id,
-                            "modelArn": f"arn:aws:bedrock:{region_name}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
+                            "modelArn": (
+                                f"arn:aws:bedrock:{region_name}::foundation-model/"
+                                "amazon.nova-pro-v1:0"
+                                # NOTE: Claude sonnet 4 does not work
+                                # NOTE: alternative: anthropic.claude-3-5-sonnet-20240620-v1:0
+                            ),
                             "retrievalConfiguration": {
                                 "vectorSearchConfiguration": {"numberOfResults": 3}
                             },
@@ -221,24 +284,28 @@ def setup_bedrock_knowledge_base():
                     print("\nSources:")
                     for citation in response["citations"]:
                         for ref in citation.get("retrievedReferences", []):
+                            metadata = ref.get("metadata", {})
                             print(
-                                f"- {ref.get('location', {}).get('s3Location', {}).get('uri', 'Unknown source')}"
+                                f"- Key: {metadata.get('x-amz-bedrock-kb-source-uri', 'Unknown')}"
+                            )
+                            print(
+                                f"  Content: {ref.get('content', {}).get('text', 'N/A')[:100]}..."
                             )
 
             except Exception as e:
                 print(f"Error querying knowledge base: {str(e)}")
 
-        print(f"\n🎉 Setup completed successfully!")
+        print("\nSetup completed successfully!")
         print(f"Knowledge Base ID: {knowledge_base_id}")
-        print(f"S3 Document Bucket: {bucket_name}")
         print(f"S3 Vector Bucket: {vector_bucket_name}")
         print(f"Vector Index: {vector_index_name}")
+        print(f"Vector Index ARN: {index_arn}")
 
         return {
             "knowledge_base_id": knowledge_base_id,
-            "document_bucket": bucket_name,
             "vector_bucket": vector_bucket_name,
             "vector_index": vector_index_name,
+            "vector_index_arn": index_arn,
         }
 
     except ClientError as e:
