@@ -1,0 +1,10 @@
+**Temperature vs Top-p:**
+
+- **Temperature (0.0-2.0)**: Controls randomness. Lower = more focused/predictable, higher = more creative/varied
+- **Top-p (0.0-1.0)**: Controls diversity by considering only the most probable tokens that sum to p%. Lower = more focused vocabulary
+
+**Safe defaults for shopping Q&A:**
+- **Temperature: 0.3-0.7** - Balanced between accuracy and natural variation
+- **Top-p: 0.8-0.9** - Allows some creativity while maintaining relevance
+
+These settings ensure helpful, accurate responses while avoiding overly robotic or unpredictable answers for product questions, recommendations, and customer service.

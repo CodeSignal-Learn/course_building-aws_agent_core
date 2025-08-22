@@ -1,0 +1,8 @@
+{
+  "get_inventory(p-001)": {
+    "stock": 42
+  },
+  "get_promotions(audio)": {
+    "percent_off": 10
+  }
+}

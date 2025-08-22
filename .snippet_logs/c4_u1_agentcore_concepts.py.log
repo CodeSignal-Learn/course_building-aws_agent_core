@@ -1,0 +1,10 @@
+AgentCore concepts (Preview):
+- Runtime: containerized app exposing /invocations, with memory support
+- Identity/roles: execution role for the runtime to call Bedrock/KB/MCP
+- Gateway: optional MCP connectivity proxy
+- Limits: preview caveats apply; see docs for current feature set
+
+Mapping local components:
+- Strands agent → runtime entrypoint in this repo: see c4_u2_agentcore_runtime.invoke()
+- KB ID → env KNOWLEDGE_BASE_ID
+- MCP endpoints → env AGENTCORE_GATEWAY_MCP_URL

@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/Users/diego/repos/course_building-aws_agent_core/src/c3_u2_tools_structured.py", line 85, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/diego/repos/course_building-aws_agent_core/src/c3_u2_tools_structured.py", line 77, in main
+    agent.register_tool("search_products", tool_search_products)
+    ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Agent' object has no attribute 'register_tool'

@@ -37,7 +37,7 @@ def setup_aws_clients(region_name: str) -> Dict[str, Any]:
         sys.exit(1)
 
 
-def list_vector_buckets(s3_vectors_client, prefix: str = "bedrock-vector-bucket-") -> List[str]:
+def list_vector_buckets(s3_vectors_client, prefix: str = "bedrock-vector-bucket") -> List[str]:
     """List all vector buckets with the specified prefix."""
     try:
         response = s3_vectors_client.list_vector_buckets()
@@ -52,7 +52,7 @@ def list_vector_buckets(s3_vectors_client, prefix: str = "bedrock-vector-bucket-
 
 
 def list_vector_indexes(
-    s3_vectors_client, bucket_name: str, prefix: str = "bedrock-vector-index-"
+    s3_vectors_client, bucket_name: str, prefix: str = "bedrock-vector-index"
 ) -> List[Dict[str, str]]:
     """List all vector indexes in a bucket with the specified prefix."""
     try:

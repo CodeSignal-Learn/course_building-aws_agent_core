@@ -51,7 +51,6 @@ def setup_s3_vectors_infrastructure():
             )
             if indexes_response["indexes"]:
                 index_arn = indexes_response["indexes"][0]["indexArn"]
-                print(f"✓ Vector Index ARN: {index_arn}")
                 index_ready = True
             else:
                 print("   Index not yet available, waiting...")

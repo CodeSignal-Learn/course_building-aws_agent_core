@@ -1,8 +1,18 @@
 import os
 import time
-from typing import List, Tuple
 
 from bedrock_agentcore.memory import MemoryClient
+from strands import Agent
+from strands.models import BedrockModel
+from strands_tools.agent_core_memory import AgentCoreMemoryToolProvider
+
+
+def build_agent(tools: list | None = None) -> Agent:
+    model = BedrockModel(
+        model_id=os.getenv("MODEL", "us.anthropic.claude-sonnet-4-20250514-v1:0"),
+        region_name=os.getenv("AWS_REGION", "us-east-1"),
+    )
+    return Agent(model=model, tools=tools)
 
 
 def main() -> int:
@@ -26,36 +36,37 @@ def main() -> int:
     actor_id = os.getenv("ACTOR_ID", "User84")
     session_id = os.getenv("SESSION_ID", "OrderSupportSession1")
 
-    messages: List[Tuple[str, str]] = [
-        ("Hi, I'm having trouble with my order #12345", "USER"),
-        ("I'm sorry to hear that. Let me look up your order.", "ASSISTANT"),
-        ("lookup_order(order_id='12345')", "TOOL"),
-        (
-            "I see your order was shipped 3 days ago. What specific issue are you experiencing?",
-            "ASSISTANT",
-        ),
-        ("The package arrived damaged", "USER"),
-    ]
-
-    client.create_event(
+    provider = AgentCoreMemoryToolProvider(
         memory_id=memory_id,
         actor_id=actor_id,
         session_id=session_id,
-        messages=messages,
+        namespace=f"/summaries/{actor_id}/{session_id}",
+    )
+    agent = build_agent(tools=provider.tools)
+
+    # Record a session; summarization strategy will run server-side
+    agent.tool.agent_core_memory(
+        action="record",
+        content=(
+            "USER: I need a secure architecture to build an AWS RAG app on Bedrock. "
+            "ASSISTANT: We can use Bedrock Knowledge Bases with S3 vectors and a retrieval tool. "
+            "TOOL: kb_create_with_s3_vectors(bucket='docs-bucket', index='kb-index') "
+            "ASSISTANT: Ensure IAM roles allow Bedrock, S3, and KMS if using encryption. "
+            "USER: Also need guidance on VPC endpoints and private network access. "
+            "ASSISTANT: Use interface endpoints for Bedrock and S3 Gateway endpoint; "
+            "restrict egress via NAT policies."
+        ),
     )
 
     # Allow strategy processing time
     time.sleep(60)
 
-    summaries = client.retrieve_memories(
-        memory_id=memory_id,
-        namespace=f"/summaries/{actor_id}/{session_id}",
-        query="What happened in this session?",
+    # Retrieve generated summaries via the tool
+    summaries = agent.tool.agent_core_memory(
+        action="retrieve",
+        query="RAG architecture guidance Bedrock KB, IAM, VPC endpoints",
     )
-
-    print("Retrieved summaries:")
-    for item in summaries:
-        print(item)
+    print(str(summaries))
 
     return 0
 

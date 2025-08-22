@@ -1,0 +1,9 @@
+{
+  "intent": "product_search",
+  "reply": "I'll help you find wireless earbuds under $150 from Anker or Sony. Let me search for options that match your preferences.",
+  "filters": {
+    "category": "wireless earbuds",
+    "price_max": 150,
+    "brand": "Anker, Sony"
+  }
+}

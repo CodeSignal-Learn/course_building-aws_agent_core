@@ -1,13 +1,52 @@
-# Project Structure
+# Shopping Assistant Course Path
 
-- **src**: Core application code and AgentCore entrypoint
-  - `src/main.py`: Defines the agent and the `invoke(payload)` function decorated as the AgentCore entrypoint.
-- **utils**: Helper scripts for local testing and AWS housekeeping
-  - `utils/invoke.py`: Sends a sample request to a locally running server for quick verification.
-  - `utils/list_runtimes.py`: Lists AgentCore runtimes in your AWS account and `AWS_REGION` using the `bedrock-agentcore-control` client.
-  - `utils/cleanup.py`: Deletes AgentCore runtimes and their related ECR repository and CodeBuild project for the app name in your `AWS_REGION`.
+This repository builds a progressively richer Shopping Assistant across four courses.
 
-# Quick Start
+## Course 1: Bedrock Basics
+
+- `src/shopping_assistant/cli.py`: CLI that takes a query and calls Bedrock with safe defaults.
+- Units:
+  - `src/u1_setup_first_call.py`
+  - `src/u2_models_and_configs.py`
+  - `src/u3_prompt_patterns_structured.py`
+  - `src/u4_guardrails.py`
+
+## Course 2: Knowledge Bases with S3 Vectors (Preview)
+
+- Data sample: `data/products.jsonl`
+- Helpers: `src/shopping_assistant/kb.py`
+- Units:
+  - `src/c2_u1_create_kb.py` — upload dataset to S3
+  - `src/c2_u2_s3_vectors.py` — wire S3 Vectors to your KB
+  - `src/c2_u3_query_kb.py` — query KB and render product cards
+  - `src/c2_u4_quality_latency.py` — quick quality/latency checks
+
+## Course 3: Strands Agents 101
+
+- Agent wrapper: `src/shopping_assistant/agent_strands.py`
+- Units:
+  - `src/c3_u1_strands_quickstart.py`
+  - `src/c3_u2_tools_structured.py`
+  - `src/c3_u3_mcp_prebuilt.py`
+  - `src/c3_u4_mcp_custom_server.py`
+
+## Course 4: Deploy on Bedrock AgentCore (Preview)
+
+- Entrypoints: `src/shopping_assistant/agentcore_entrypoints.py`
+- Units:
+  - `src/c4_u1_agentcore_concepts.py`
+  - `src/c4_u2_agentcore_runtime.py`
+  - `src/c4_u3_agentcore_mcp.py`
+  - `src/c4_u4_agentcore_memory.py`
+
+## Quick run examples
+
+- CLI: `uv run python -m shopping_assistant.cli "Find a budget laptop under $800"`
+- Guardrails demo: set `BEDROCK_GUARDRAIL_ID`/`BEDROCK_GUARDRAIL_VERSION` then `uv run python src/shopping_assistant/guardrails_example.py`
+- KB upload: set `KB_S3_BUCKET` then `uv run python src/c2_u1_create_kb.py`
+- KB query: set `KNOWLEDGE_BASE_ID` then `uv run python src/c2_u3_query_kb.py`
+- Strands quickstart: `uv run python src/c3_u1_strands_quickstart.py`
+- AgentCore local: `uv run python src/c4_u2_agentcore_runtime.py`
 
 ## Setup (uv)
 
@@ -47,10 +86,10 @@ export AWS_SECRET_ACCESS_KEY=...
 
 ## Local Testing
 
-### 1. Run your agent core server locally
+### 1. Run your AgentCore server locally
 
 ```bash
-uv run python src/main.py
+uv run python src/c4_u2_agentcore_runtime.py
 ```
 ### 2. Test the server with a request
 ```bash
@@ -62,14 +101,14 @@ uv run python utils/invoke.py
 ### 1. Set up your agent project for deployment:
 
 ```bash
-uv run agentcore configure --entrypoint src/main.py --name strands_demo
+uv run agentcore configure --entrypoint src/shopping_assistant/agentcore_entrypoints.py --name shopping_assistant
 ```
 
 > `agentcore configure` inspects your entry point script, gathers details you pass (agent name, region, IAM execution-role, required packages), and writes them to a `.bedrock_agentcore.yaml` blueprint. With that blueprint in place, later commands can build and deploy the agent without asking more questions.
 
 ### 1.1 (Optional) Add --disable-otel to silence the OpenTelemetry noise
 ```bash
-uv run agentcore configure --disable-otel --entrypoint src/main.py --name strands_demo
+uv run agentcore configure --disable-otel --entrypoint src/shopping_assistant/agentcore_entrypoints.py --name shopping_assistant
 ```
 
 ### 2. Deploy locally with your env variables and chosen model
@@ -104,7 +143,7 @@ Before you can deploy to the cloud you must have:
 ### 1. Configure the Agent
 
 ```bash
-uv run agentcore configure --entrypoint src/main.py --name strands_demo
+uv run agentcore configure --entrypoint src/shopping_assistant/agentcore_entrypoints.py --name shopping_assistant
 ```
 
 > **Tip** For some reason I could only make launch to AWS work when I deleted the previous created `.bedrock_agentcore.yaml` and ran configure again. I think it was because of some ID it created in that file.
