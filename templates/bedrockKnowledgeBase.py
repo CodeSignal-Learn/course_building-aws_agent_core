@@ -14,7 +14,7 @@ result = setup_complete_knowledge_base(
     vector_bucket_name=VECTOR_BUCKET_NAME,
     vector_index_name=VECTOR_INDEX_NAME,
     kb_name=KB_NAME,
-    region_name=REGION_NAME
+    region_name=REGION_NAME,
 )
 
 # Check if knowledge base setup was successful
@@ -23,7 +23,7 @@ if result:
     print(f"\nKnowledge Base is ready to use!")
     print(f"Knowledge Base ID: {knowledge_base_id}")
     print(f"Vector Index ARN: {vector_index_arn}")
-    
+
 else:
     print("❌ Failed to create knowledge base. Please check the error messages above.")
     exit(1)
