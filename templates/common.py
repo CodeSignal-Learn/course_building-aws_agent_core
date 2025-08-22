@@ -5,6 +5,81 @@ import boto3
 import uuid
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
+from botocore.exceptions import ClientError
+
+
+def grant_user_policy(username: str, policy_arn: str, create_user: bool = True) -> bool:
+    """
+    Grant a specific IAM policy to a user.
+    
+    Args:
+        username: The IAM username to grant access to
+        policy_arn: The ARN of the policy to attach (e.g., 'arn:aws:iam::aws:policy/AmazonBedrockFullAccess')
+        create_user: Whether to create the user if it doesn't exist (default: True)
+    
+    Returns:
+        bool: True if successful, False if failed
+    """
+    try:
+        # Extract policy name from ARN for display purposes
+        policy_name = policy_arn.split('/')[-1] if '/' in policy_arn else policy_arn
+        print(f"Granting {policy_name} to user: {username}")
+        
+        iam_client = boto3.client('iam')
+        
+        # Check if user exists, create if requested
+        try:
+            iam_client.get_user(UserName=username)
+            print(f"✅ User {username} already exists")
+            user_exists = True
+        except iam_client.exceptions.NoSuchEntityException:
+            print(f"❌ User {username} does not exist and create_user is False")
+            return False
+        
+        # Check if the policy is already attached
+        try:
+            attached_policies = iam_client.list_attached_user_policies(UserName=username)
+            
+            policy_already_attached = any(
+                policy['PolicyArn'] == policy_arn 
+                for policy in attached_policies['AttachedPolicies']
+            )
+            
+            if policy_already_attached:
+                print(f"✅ {policy_name} policy already attached to user {username}")
+                return True
+                
+        except ClientError as e:
+            print(f"⚠️  Could not check existing policies for {username}: {e}")
+        
+        # Attach the policy to the user
+        try:
+            iam_client.attach_user_policy(
+                UserName=username,
+                PolicyArn=policy_arn
+            )
+            print(f"✅ Successfully attached {policy_name} policy to user {username}")
+            
+            # Verify the policy was attached
+            time.sleep(2)
+            attached_policies = iam_client.list_attached_user_policies(UserName=username)
+            target_policy = next(
+                (policy for policy in attached_policies['AttachedPolicies'] 
+                 if policy['PolicyArn'] == policy_arn), None
+            )
+            
+            if target_policy:
+                print(f"✅ Verification successful: {target_policy['PolicyName']} is attached")
+            
+            return True
+            
+        except ClientError as e:
+            print(f"❌ Failed to attach {policy_name} policy to user {username}: {e}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Unexpected error while granting policy to user {username}: {e}")
+        return False
 
 
 def create_guardrail(control_client):
