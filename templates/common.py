@@ -498,6 +498,39 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
                 )
                 print(f"✅ Attached policy {policy_arn} to role {role_name}")
 
+            # Create custom policy for S3 Vectors permissions
+            s3vectors_policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3vectors:*"
+                        ],
+                        "Resource": "*"
+                    }
+                ]
+            }
+            
+            custom_policy_name = f"{role_name}-s3vectors-policy"
+            try:
+                iam_client.create_policy(
+                    PolicyName=custom_policy_name,
+                    PolicyDocument=json.dumps(s3vectors_policy),
+                    Description="S3 Vectors permissions for Bedrock Knowledge Base"
+                )
+                print(f"✅ Created custom policy {custom_policy_name}")
+            except iam_client.exceptions.EntityAlreadyExistsException:
+                print(f"✅ Custom policy {custom_policy_name} already exists")
+
+            # Attach the custom policy
+            custom_policy_arn = f"arn:aws:iam::{account_id}:policy/{custom_policy_name}"
+            iam_client.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=custom_policy_arn
+            )
+            print(f"✅ Attached custom policy {custom_policy_arn} to role {role_name}")
+
             # Wait for role to be fully created
             print("⏳ Waiting for role to propagate...")
             time.sleep(15)  # Wait for role to propagate
@@ -573,10 +606,6 @@ def setup_complete_knowledge_base(documents_folder: Optional[str] = None,
         s3_vectors_client = boto3.client("s3vectors", region_name=region_name)
         bedrock_runtime_client = boto3.client("bedrock-runtime", region_name=region_name)
         bedrock_agent_client = boto3.client("bedrock-agent", region_name=region_name)
-        sts_client = boto3.client("sts", region_name=region_name)
-
-        # Get AWS account ID
-        account_id = sts_client.get_caller_identity()["Account"]
 
         # Step 1: Load documents
         documents = load_documents_from_folder(documents_folder)

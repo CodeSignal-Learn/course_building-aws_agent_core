@@ -11,3 +11,6 @@ Dockerfile
 
 # API folder
 api/
+
+# Documents folder
+docs/
