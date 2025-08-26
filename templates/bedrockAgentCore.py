@@ -1,26 +1,55 @@
+import os
+from common import create_guardrail, grant_user_policy, setup_complete_knowledge_base
 from enableModel import enable_model
-from common import grant_user_policy
 
-# Bedrock model ID to enable
+# Configuration
 MODEL_ID = "anthropic.claude-sonnet-4-20250514-v1:0"
+EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"
+USER_POLICIES = ["arn:aws:iam::aws:policy/AmazonBedrockFullAccess", "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess"]
+DOCUMENTS_FOLDER = os.path.join(os.path.dirname(__file__), "documents")
+VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
+VECTOR_INDEX_NAME = "bedrock-vector-index"
+KB_NAME = "bedrock-knowledge-base"
+REGION_NAME = "us-east-1"
 
 def main():
-    # 1. Give Bedrock full access to learner user
-    bedrock_policy_arn = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
-    
-    if not grant_user_policy("learner", bedrock_policy_arn, create_user=True):
-        print("❌ Failed to grant Bedrock access to learner. Exiting.")
-        return
+    # 1. Grant user policies
+    for policy in USER_POLICIES:
+        if not grant_user_policy("learner", policy):
+            print(f"❌ Failed to grant {policy} to learner. Exiting.")
+            exit(1)
 
-    # 2. Give AgentCoreFullAccess to learner user
-    agentcore_policy_arn = "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess"
-    
-    if not grant_user_policy("learner", agentcore_policy_arn, create_user=False):
-        print("❌ Failed to grant AgentCoreFullAccess to learner. Exiting.")
-        return
-
-    # 3. Enable the model
+    # 2. Enable the Bedrock models
     enable_model(MODEL_ID)
+    enable_model(EMBEDDING_MODEL_ID)
+
+    # 3. Create guardrail
+    guardrail = create_guardrail(REGION_NAME)
+    if not guardrail:
+        print("❌ Failed to create guardrail. Exiting.")
+        exit(1)
+    else:
+        print(f"✅ Guardrail is ready to use with ID: {guardrail['guardrailId']}")
+
+    # 4. Setup complete knowledge base
+    result = setup_complete_knowledge_base(
+        documents_folder=DOCUMENTS_FOLDER,
+        vector_bucket_name=VECTOR_BUCKET_NAME,
+        vector_index_name=VECTOR_INDEX_NAME,
+        kb_name=KB_NAME,
+        region_name=REGION_NAME,
+    )
+
+    # Check if knowledge base setup was successful
+    if result:
+        knowledge_base_id, vector_index_arn = result
+        print(f"\nKnowledge Base is ready to use!")
+        print(f"Knowledge Base ID: {knowledge_base_id}")
+        print(f"Vector Index ARN: {vector_index_arn}")
+
+    else:
+        print("❌ Failed to create knowledge base. Exiting.")
+        exit(1)
 
 if __name__ == "__main__":
     main()

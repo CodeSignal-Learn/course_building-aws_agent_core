@@ -11,14 +11,13 @@ import zipfile
 import shutil
 
 
-def grant_user_policy(username: str, policy_arn: str, create_user: bool = True) -> bool:
+def grant_user_policy(username: str, policy_arn: str) -> bool:
     """
     Grant a specific IAM policy to a user.
 
     Args:
         username: The IAM username to grant access to
         policy_arn: The ARN of the policy to attach (e.g., 'arn:aws:iam::aws:policy/AmazonBedrockFullAccess')
-        create_user: Whether to create the user if it doesn't exist (default: True)
 
     Returns:
         bool: True if successful, False if failed
@@ -33,8 +32,6 @@ def grant_user_policy(username: str, policy_arn: str, create_user: bool = True) 
         # Check if user exists, create if requested
         try:
             iam_client.get_user(UserName=username)
-            print(f"✅ User {username} already exists")
-            user_exists = True
         except iam_client.exceptions.NoSuchEntityException:
             print(f"❌ User {username} does not exist and create_user is False")
             return False
@@ -85,16 +82,18 @@ def grant_user_policy(username: str, policy_arn: str, create_user: bool = True) 
         return False
 
 
-def create_guardrail(control_client):
+def create_guardrail(region_name: str = "us-east-1"):
     """
     Create a guardrail for AWS Bedrock with predefined security policies.
 
     Args:
-        control_client: boto3 Bedrock client.
+        region_name: AWS region name
 
     Returns:
         dict: Response from create_guardrail API call, or None if failed.
     """
+    control_client = boto3.client("bedrock", region_name=region_name)
+
     # Define the standard blocked message
     blocked_message = "Your input contains content that is not allowed."
 
