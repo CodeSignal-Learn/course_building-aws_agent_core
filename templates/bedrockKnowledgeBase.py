@@ -3,7 +3,7 @@ from common import create_guardrail, grant_user_policy, setup_complete_knowledge
 from enableModel import enable_model
 
 # Configuration
-BEDROCK_MODELS = ["anthropic.claude-sonnet-4-20250514-v1:0", "amazon.titan-embed-text-v2:0"]
+BEDROCK_MODELS = ["anthropic.claude-sonnet-4-20250514-v1:0", "amazon.titan-embed-text-v2:0", "amazon.nova-pro-v1:0"]
 USER_POLICIES = ["arn:aws:iam::aws:policy/AmazonBedrockFullAccess"]
 DOCUMENTS_FOLDER = os.path.join(os.path.dirname(__file__), "docs")
 VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
