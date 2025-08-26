@@ -69,7 +69,7 @@ def list_vector_indexes(
 
 
 def list_knowledge_bases(
-    bedrock_agent_client, prefix: str = "bedrock-knowledge-base-"
+    bedrock_agent_client, prefix: str = "bedrock-knowledge-base"
 ) -> List[Dict[str, str]]:
     """List all Knowledge Bases with the specified prefix."""
     try:
