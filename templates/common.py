@@ -11,14 +11,13 @@ import zipfile
 import shutil
 
 
-def grant_user_policy(username: str, policy_arn: str, create_user: bool = True) -> bool:
+def grant_user_policy(username: str, policy_arn: str) -> bool:
     """
     Grant a specific IAM policy to a user.
 
     Args:
         username: The IAM username to grant access to
         policy_arn: The ARN of the policy to attach (e.g., 'arn:aws:iam::aws:policy/AmazonBedrockFullAccess')
-        create_user: Whether to create the user if it doesn't exist (default: True)
 
     Returns:
         bool: True if successful, False if failed
@@ -33,8 +32,6 @@ def grant_user_policy(username: str, policy_arn: str, create_user: bool = True) 
         # Check if user exists, create if requested
         try:
             iam_client.get_user(UserName=username)
-            print(f"✅ User {username} already exists")
-            user_exists = True
         except iam_client.exceptions.NoSuchEntityException:
             print(f"❌ User {username} does not exist and create_user is False")
             return False
@@ -85,16 +82,18 @@ def grant_user_policy(username: str, policy_arn: str, create_user: bool = True) 
         return False
 
 
-def create_guardrail(control_client):
+def create_guardrail(region_name: str = "us-east-1"):
     """
     Create a guardrail for AWS Bedrock with predefined security policies.
 
     Args:
-        control_client: boto3 Bedrock client.
+        region_name: AWS region name
 
     Returns:
         dict: Response from create_guardrail API call, or None if failed.
     """
+    control_client = boto3.client("bedrock", region_name=region_name)
+
     # Define the standard blocked message
     blocked_message = "Your input contains content that is not allowed."
 
@@ -499,6 +498,39 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
                 )
                 print(f"✅ Attached policy {policy_arn} to role {role_name}")
 
+            # Create custom policy for S3 Vectors permissions
+            s3vectors_policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3vectors:*"
+                        ],
+                        "Resource": "*"
+                    }
+                ]
+            }
+            
+            custom_policy_name = f"{role_name}-s3vectors-policy"
+            try:
+                iam_client.create_policy(
+                    PolicyName=custom_policy_name,
+                    PolicyDocument=json.dumps(s3vectors_policy),
+                    Description="S3 Vectors permissions for Bedrock Knowledge Base"
+                )
+                print(f"✅ Created custom policy {custom_policy_name}")
+            except iam_client.exceptions.EntityAlreadyExistsException:
+                print(f"✅ Custom policy {custom_policy_name} already exists")
+
+            # Attach the custom policy
+            custom_policy_arn = f"arn:aws:iam::{account_id}:policy/{custom_policy_name}"
+            iam_client.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=custom_policy_arn
+            )
+            print(f"✅ Attached custom policy {custom_policy_arn} to role {role_name}")
+
             # Wait for role to be fully created
             print("⏳ Waiting for role to propagate...")
             time.sleep(15)  # Wait for role to propagate
@@ -574,10 +606,6 @@ def setup_complete_knowledge_base(documents_folder: Optional[str] = None,
         s3_vectors_client = boto3.client("s3vectors", region_name=region_name)
         bedrock_runtime_client = boto3.client("bedrock-runtime", region_name=region_name)
         bedrock_agent_client = boto3.client("bedrock-agent", region_name=region_name)
-        sts_client = boto3.client("sts", region_name=region_name)
-
-        # Get AWS account ID
-        account_id = sts_client.get_caller_identity()["Account"]
 
         # Step 1: Load documents
         documents = load_documents_from_folder(documents_folder)
