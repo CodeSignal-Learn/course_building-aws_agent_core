@@ -137,10 +137,14 @@ def enable_model(
         if state["agreement"] != "AVAILABLE":
             print(f"Agreement not available. Accepting public offer for {model_id}")
             ok, msg = accept_public_offer(br, model_id, offer_type=offer_type)
+            if not ok:
+                print(f"❌ Error accepting public offer for {model_id}: {msg}")
+                return {"status": "error", "steps": steps, "final": state}
             steps.append(msg)
             time.sleep(2)
             state = explain_state(get_availability(br, model_id))
             steps.append(f"post-agreement: {state}")
+            print(f"Public offer accepted for {model_id}")
 
         if submit_use_case_json is not None:
             print(f"Submitting use case for {model_id}")
@@ -184,8 +188,16 @@ def enable_model(
         return {"status": status, "steps": steps, "final": final_state}
 
     except ClientError as e:
+        print(f"❌ Error enabling model {model_id}: {e}")
         return {
             "status": "error",
             "error": f"{e.response.get('Error', {}).get('Code')}: {e.response.get('Error', {}).get('Message')}",
+            "steps": steps,
+        }
+    except Exception as e:
+        print(f"❌ Error enabling model {model_id}: {e}")
+        return {
+            "status": "error",
+            "error": f"{e}",
             "steps": steps,
         }
