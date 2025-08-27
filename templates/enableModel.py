@@ -12,12 +12,12 @@ Requirements:
 - AWS credentials with Bedrock (and if needed, Marketplace) permissions
 """
 
-import os
-import sys
 import json
+import os
 import time
-import urllib.request
 import urllib.error
+import urllib.request
+
 import boto3
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
@@ -54,7 +54,9 @@ def accept_public_offer(br, model_id, offer_type="PUBLIC"):
     ).get("offers", [])
     if not offers:
         return False, "no_public_offers"
-    br.create_foundation_model_agreement(modelId=model_id, offerToken=offers[0]["offerToken"])
+    br.create_foundation_model_agreement(
+        modelId=model_id, offerToken=offers[0]["offerToken"]
+    )
     return True, "offer_accepted"
 
 
@@ -78,11 +80,17 @@ def set_model_entitlement(model_id, region):
     url = f"https://bedrock.{region}.amazonaws.com/foundation-model-entitlement"
     body = json.dumps({"modelId": model_id}).encode("utf-8")
 
-    req = AWSRequest(method="POST", url=url, data=body,
-                     headers={"Content-Type": "application/x-amz-json-1.1"})
+    req = AWSRequest(
+        method="POST",
+        url=url,
+        data=body,
+        headers={"Content-Type": "application/x-amz-json-1.1"},
+    )
     SigV4Auth(creds, "bedrock", region).add_auth(req)
 
-    http_req = urllib.request.Request(url, data=req.body, headers=dict(req.headers), method="POST")
+    http_req = urllib.request.Request(
+        url, data=req.body, headers=dict(req.headers), method="POST"
+    )
     with urllib.request.urlopen(http_req, timeout=30) as r:
         payload = r.read().decode("utf-8")
         return r.status, payload
@@ -92,21 +100,28 @@ def wait_until_ready(br, model_id, max_wait_s, poll_interval_s):
     end = time.time() + max_wait_s
     last = explain_state(get_availability(br, model_id))
     while time.time() < end:
-        if all([
-            last["agreement"] == "AVAILABLE",
-            last["auth"] == "AUTHORIZED",
-            last["entitlement"] == "AVAILABLE",
-            last["region"] == "AVAILABLE",
-        ]):
+        if all(
+            [
+                last["agreement"] == "AVAILABLE",
+                last["auth"] == "AUTHORIZED",
+                last["entitlement"] == "AVAILABLE",
+                last["region"] == "AVAILABLE",
+            ]
+        ):
             return "enabled", last
         time.sleep(poll_interval_s)
         last = explain_state(get_availability(br, model_id))
     return "timeout", last
 
 
-def enable_model(model_id, region=REGION, offer_type=OFFER_TYPE,
-                 submit_use_case_json=SUBMIT_USE_CASE_JSON,
-                 max_wait_s=MAX_WAIT_S, poll_interval_s=POLL_INTERVAL_S):
+def enable_model(
+    model_id,
+    region=REGION,
+    offer_type=OFFER_TYPE,
+    submit_use_case_json=SUBMIT_USE_CASE_JSON,
+    max_wait_s=MAX_WAIT_S,
+    poll_interval_s=POLL_INTERVAL_S,
+):
     br = boto3.client("bedrock", region_name=region)
     steps = []
 
@@ -116,9 +131,11 @@ def enable_model(model_id, region=REGION, offer_type=OFFER_TYPE,
         steps.append(f"start: {state}")
 
         if state["region"] == "NOT_AVAILABLE":
+            print(f"❌ Bedrock model {model_id} is not available in {region}")
             return {"status": "blocked_region", "steps": steps, "final": state}
 
         if state["agreement"] != "AVAILABLE":
+            print(f"Agreement not available. Accepting public offer for {model_id}")
             ok, msg = accept_public_offer(br, model_id, offer_type=offer_type)
             steps.append(msg)
             time.sleep(2)
@@ -126,28 +143,44 @@ def enable_model(model_id, region=REGION, offer_type=OFFER_TYPE,
             steps.append(f"post-agreement: {state}")
 
         if submit_use_case_json is not None:
+            print(f"Submitting use case for {model_id}")
             steps.append("submitting_use_case_us_east_1")
             try:
                 steps.append(submit_use_case_us_east_1(submit_use_case_json))
             except ClientError as e:
+                print(f"❌ Error submitting use case for {model_id}: {e}")
                 steps.append(f"use_case_error: {e}")
             time.sleep(2)
             state = explain_state(get_availability(br, model_id))
             steps.append(f"post-usecase: {state}")
 
         if state["entitlement"] != "AVAILABLE":
+            print(
+                f"Entitlement not available. Trying to set model entitlement for {model_id}"
+            )
             try:
                 status_code, payload = set_model_entitlement(model_id, region)
-                steps.append(f"entitlement_post: http {status_code} payload={payload!r}")
+                steps.append(
+                    f"entitlement_post: http {status_code} payload={payload!r}"
+                )
                 time.sleep(2)
                 state = explain_state(get_availability(br, model_id))
                 steps.append(f"post-entitlement: {state}")
+                print(f"Entitlement set for {model_id}")
             except urllib.error.HTTPError as e:
-                steps.append(f"entitlement_http_error: {e.code} {e.read().decode('utf-8', 'ignore')}")
+                steps.append(
+                    f"entitlement_http_error: {e.code} {e.read().decode('utf-8', 'ignore')}"
+                )
+                print(f"❌ Error setting model entitlement for {model_id}: {e}")
             except Exception as e:
                 steps.append(f"entitlement_error: {e!r}")
+                print(f"❌ Error setting model entitlement for {model_id}: {e}")
 
-        status, final_state = wait_until_ready(br, model_id, max_wait_s, poll_interval_s)
+        print(f"Waiting until ready for {model_id}")
+        status, final_state = wait_until_ready(
+            br, model_id, max_wait_s, poll_interval_s
+        )
+        print(f"Status: {status}, Final state: {final_state}")
         return {"status": status, "steps": steps, "final": final_state}
 
     except ClientError as e:
