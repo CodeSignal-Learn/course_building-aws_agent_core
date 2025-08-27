@@ -667,14 +667,14 @@ def setup_complete_knowledge_base(
 
         # Default documents folder path
         if documents_folder is None:
-            documents_folder = os.path.join(os.path.dirname(__file__), "docs/")
+            documents_folder = os.path.join(os.getcwd(), "docs/")
 
         if (
             not os.path.exists(documents_folder)
             or len(os.listdir(documents_folder)) == 0
         ):
             zip_url = "https://codesignal-staging-assets.s3.amazonaws.com/uploads/1755867202135/techco-kb-sample-md.zip"
-            zip_path = "techco-data.zip"
+            zip_path = os.path.join(os.getcwd(), "techco-data.zip")
             # Download the zip file
             with urllib.request.urlopen(zip_url) as response, open(
                 zip_path, "wb"

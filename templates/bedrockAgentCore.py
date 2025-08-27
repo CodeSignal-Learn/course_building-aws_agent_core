@@ -20,7 +20,7 @@ USER_POLICIES = [
     "arn:aws:iam::aws:policy/AmazonBedrockFullAccess",
     "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess",
 ]
-DOCUMENTS_FOLDER = os.path.join(os.path.dirname(__file__), "docs")
+DOCUMENTS_FOLDER = os.path.join(os.getcwd(), "docs")
 VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
 VECTOR_INDEX_NAME = "bedrock-vector-index"
 KB_NAME = "bedrock-knowledge-base"
