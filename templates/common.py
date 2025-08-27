@@ -147,7 +147,7 @@ def create_guardrail(region_name: str = "us-east-1"):
 
         # Check if guardrail creation was successful
         if "guardrailId" in response and "guardrailArn" in response:
-            print(f"✅ Guardrail created successfully!")
+            print("✅ Guardrail created successfully!")
             print(f"Guardrail ID: {response['guardrailId']}")
             print(f"Guardrail ARN: {response['guardrailArn']}")
             print(f"Version: {response.get('version', 'N/A')}")
@@ -157,7 +157,31 @@ def create_guardrail(region_name: str = "us-east-1"):
             return None
 
     except Exception as e:
-        print(f"❌ Failed to create guardrail: {str(e)}")
+        # If guardrail with the same name already exists, reuse it
+        message = str(e)
+        if "ConflictException" in message or "already has this name" in message:
+            try:
+                summaries = control_client.list_guardrails().get("guardrails", [])
+                existing = next(
+                    (g for g in summaries if g.get("name") == name),
+                    None,
+                )
+                if existing:
+                    print("✅ Guardrail already exists, reusing it")
+                    # Get full details if needed
+                    guardrail_id = existing.get("guardrailId") or existing.get("id")
+                    guardrail_arn = existing.get("guardrailArn") or existing.get(
+                        "arn"
+                    )
+                    return {
+                        "guardrailId": guardrail_id,
+                        "guardrailArn": guardrail_arn,
+                        "version": existing.get("version", "DRAFT"),
+                    }
+            except Exception as inner:
+                print(f"⚠️  Failed to look up existing guardrail: {inner}")
+
+        print(f"❌ Failed to create guardrail: {message}")
         return None
 
 
@@ -386,32 +410,59 @@ def create_knowledge_base(
     try:
         print("Creating Bedrock Knowledge Base...")
 
-        # Create Knowledge Base
-        kb_response = bedrock_agent_client.create_knowledge_base(
-            name=kb_name,
-            description="Knowledge base using S3 Vectors for document retrieval",
-            roleArn=kb_role_arn,
-            knowledgeBaseConfiguration={
-                "type": "VECTOR",
-                "vectorKnowledgeBaseConfiguration": {
-                    "embeddingModelArn": (
-                        f"arn:aws:bedrock:{region_name}::foundation-model/{embedding_model_id}"
-                    ),
-                    "embeddingModelConfiguration": {
-                        "bedrockEmbeddingModelConfiguration": {
-                            "dimensions": embedding_dimensions
-                        }
+        # Try to create Knowledge Base; if already exists, look it up
+        kb_response = None
+        try:
+            kb_response = bedrock_agent_client.create_knowledge_base(
+                name=kb_name,
+                description=(
+                    "Knowledge base using S3 Vectors for document retrieval"
+                ),
+                roleArn=kb_role_arn,
+                knowledgeBaseConfiguration={
+                    "type": "VECTOR",
+                    "vectorKnowledgeBaseConfiguration": {
+                        "embeddingModelArn": (
+                            f"arn:aws:bedrock:{region_name}::foundation-model/"
+                            f"{embedding_model_id}"
+                        ),
+                        "embeddingModelConfiguration": {
+                            "bedrockEmbeddingModelConfiguration": {
+                                "dimensions": embedding_dimensions
+                            }
+                        },
                     },
                 },
-            },
-            storageConfiguration={
-                "type": "S3_VECTORS",
-                "s3VectorsConfiguration": {
-                    "indexArn": vector_index_arn,
+                storageConfiguration={
+                    "type": "S3_VECTORS",
+                    "s3VectorsConfiguration": {
+                        "indexArn": vector_index_arn,
+                    },
                 },
-            },
-            clientToken=str(uuid.uuid4()),
-        )
+                clientToken=str(uuid.uuid4()),
+            )
+        except Exception as e:
+            message = str(e)
+            if "ConflictException" in message or "already exists" in message:
+                summaries = bedrock_agent_client.list_knowledge_bases().get(
+                    "knowledgeBaseSummaries", []
+                )
+                existing = next(
+                    (k for k in summaries if k.get("name") == kb_name),
+                    None,
+                )
+                if existing:
+                    knowledge_base_id = existing.get("knowledgeBaseId") or existing.get(
+                        "id"
+                    )
+                    print(
+                        "✅ Knowledge Base already exists, reusing it: "
+                        f"{knowledge_base_id}"
+                    )
+                    return knowledge_base_id
+                raise
+            else:
+                raise
 
         knowledge_base_id = kb_response["knowledgeBase"]["knowledgeBaseId"]
         print(f"✅ Created Knowledge Base ID: {knowledge_base_id}")
@@ -521,7 +572,9 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
 
             for policy_arn in policies:
                 iam_client.attach_role_policy(RoleName=role_name, PolicyArn=policy_arn)
-                print(f"✅ Attached policy {policy_arn} to role {role_name}")
+                print(
+                    f"✅ Attached policy {policy_arn} to role {role_name}"
+                )
 
             # Create custom policy for S3 Vectors permissions
             s3vectors_policy = {
@@ -538,7 +591,9 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
                     PolicyDocument=json.dumps(s3vectors_policy),
                     Description="S3 Vectors permissions for Bedrock Knowledge Base",
                 )
-                print(f"✅ Created custom policy {custom_policy_name}")
+                print(
+                    f"✅ Created custom policy {custom_policy_name}"
+                )
             except iam_client.exceptions.EntityAlreadyExistsException:
                 print(f"✅ Custom policy {custom_policy_name} already exists")
 
@@ -568,7 +623,8 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
             except Exception as check_error:
                 if attempt < max_retries - 1:
                     print(
-                        f"⏳ Role not ready yet (attempt {attempt + 1}/{max_retries}), waiting {retry_delay}s..."
+                        f"⏳ Role not ready yet (attempt {attempt + 1}/{max_retries}), "
+                        f"waiting {retry_delay}s..."
                     )
                     time.sleep(retry_delay)
                 else:
