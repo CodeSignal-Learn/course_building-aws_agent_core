@@ -26,16 +26,19 @@ from botocore.exceptions import ClientError
 REGION = os.getenv("BEDROCK_REGION", "us-east-1")
 POLL_INTERVAL_S = float(os.getenv("POLL_INTERVAL_S", "3"))
 MAX_WAIT_S = int(os.getenv("MAX_WAIT_S", "120"))
-OFFER_TYPE = os.getenv("OFFER_TYPE", "PUBLIC")
 
-# Use-case submission (optional). If you set SUBMIT_USE_CASE_JSON to a JSON string,
-# it will be submitted to us-east-1. Example env var content:
-# {"companyName":"ACME","companyWebsite":"https://acme.example","intendedUsers":"0",
-#  "industryOption":"Technology","otherIndustryOption":"","useCases":"Internal assistants"}
-SUBMIT_USE_CASE_JSON = os.getenv("SUBMIT_USE_CASE_JSON", "").strip() or None
+SUBMIT_USE_CASE_JSON = {
+    "companyName": "CodeSignal",
+    "companyWebsite": "https://codesignal.com/",
+    "intendedUsers": "1",
+    "industryOption": "EdTech",
+    "otherIndustryOption": "",
+    "useCases": "AWS/CodeSignal cobranded educational content.",
+}
 
 
 def get_availability(br, model_id):
+    print(f"Getting availability for {model_id}")
     return br.get_foundation_model_availability(modelId=model_id)
 
 
@@ -48,24 +51,29 @@ def explain_state(av):
     }
 
 
-def accept_public_offer(br, model_id, offer_type="PUBLIC"):
-    offers = br.list_foundation_model_agreement_offers(
-        modelId=model_id, offerType=offer_type
-    ).get("offers", [])
+def create_model_agreement(br, model_id):
+    print(f"Listing model agreement offers for {model_id}")
+    offers = br.list_foundation_model_agreement_offers(modelId=model_id).get(
+        "offers", []
+    )
     if not offers:
         return False, "no_public_offers"
+    print(
+        f"Creating model agreement for {model_id} with offer token {offers[0]['offerToken']}"
+    )
     br.create_foundation_model_agreement(
         modelId=model_id, offerToken=offers[0]["offerToken"]
     )
     return True, "offer_accepted"
 
 
-def submit_use_case_us_east_1(payload_json_str):
-    if not payload_json_str:
+def submit_use_case(use_case):
+    if not use_case:
         return "skipped"
-    br_global = boto3.client("bedrock", region_name="us-east-1")
+    print(f"Submitting use case: {use_case}")
+    br_global = boto3.client("bedrock", region_name=REGION)
     # boto3 expects raw bytes for 'formData'
-    br_global.put_use_case_for_model_access(formData=payload_json_str.encode("utf-8"))
+    br_global.put_use_case_for_model_access(formData=json.dumps(use_case))
     return "submitted"
 
 
@@ -75,6 +83,7 @@ def set_model_entitlement(model_id, region):
     NOTE: This uses an endpoint that is not yet documented in public boto3,
     and may change.
     """
+    print(f"Setting model entitlement for {model_id} in {region}")
     session = boto3.session.Session()
     creds = session.get_credentials().get_frozen_credentials()
     url = f"https://bedrock.{region}.amazonaws.com/foundation-model-entitlement"
@@ -117,7 +126,6 @@ def wait_until_ready(br, model_id, max_wait_s, poll_interval_s):
 def enable_model(
     model_id,
     region=REGION,
-    offer_type=OFFER_TYPE,
     submit_use_case_json=SUBMIT_USE_CASE_JSON,
     max_wait_s=MAX_WAIT_S,
     poll_interval_s=POLL_INTERVAL_S,
@@ -134,29 +142,29 @@ def enable_model(
             print(f"❌ Bedrock model {model_id} is not available in {region}")
             return {"status": "blocked_region", "steps": steps, "final": state}
 
-        if state["agreement"] != "AVAILABLE":
-            print(f"Agreement not available. Accepting public offer for {model_id}")
-            ok, msg = accept_public_offer(br, model_id, offer_type=offer_type)
-            if not ok:
-                print(f"❌ Error accepting public offer for {model_id}: {msg}")
-                return {"status": "error", "steps": steps, "final": state}
-            steps.append(msg)
-            time.sleep(2)
-            state = explain_state(get_availability(br, model_id))
-            steps.append(f"post-agreement: {state}")
-            print(f"Public offer accepted for {model_id}")
-
         if submit_use_case_json is not None:
             print(f"Submitting use case for {model_id}")
-            steps.append("submitting_use_case_us_east_1")
+            steps.append("submitting_use_case")
             try:
-                steps.append(submit_use_case_us_east_1(submit_use_case_json))
+                steps.append(submit_use_case(submit_use_case_json))
             except ClientError as e:
                 print(f"❌ Error submitting use case for {model_id}: {e}")
                 steps.append(f"use_case_error: {e}")
             time.sleep(2)
             state = explain_state(get_availability(br, model_id))
             steps.append(f"post-usecase: {state}")
+
+        if state["agreement"] != "AVAILABLE":
+            print(f"Agreement not available. Creating model agreement for {model_id}")
+            ok, msg = create_model_agreement(br, model_id)
+            if not ok:
+                print(f"❌ Error creating model agreement for {model_id}: {msg}")
+                return {"status": "error", "steps": steps, "final": state}
+            steps.append(msg)
+            time.sleep(2)
+            state = explain_state(get_availability(br, model_id))
+            steps.append(f"post-agreement: {state}")
+            print(f"Model agreement created for {model_id}")
 
         if state["entitlement"] != "AVAILABLE":
             print(
