@@ -12,82 +12,159 @@ import boto3
 from botocore.exceptions import ClientError
 
 
-def grant_user_policy(username: str, policy_arn: str) -> bool:
+def attach_policy(
+    attach_to_type: str,
+    attach_to_name: str,
+    policy_arn: str,
+) -> Tuple[bool, Optional[str]]:
     """
-    Grant a specific IAM policy to a user.
+    Attach an existing IAM policy (by ARN) to a user or role.
 
-    Args:
-        username: The IAM username to grant access to
-        policy_arn: The ARN of the policy to attach (e.g., 'arn:aws:iam::aws:policy/AmazonBedrockFullAccess')
-
-    Returns:
-        bool: True if successful, False if failed
+    Returns (success, policy_arn_if_known).
     """
     try:
-        # Extract policy name from ARN for display purposes
-        policy_name = policy_arn.split("/")[-1] if "/" in policy_arn else policy_arn
-        print(f"Granting {policy_name} to user: {username}")
-
         iam_client = boto3.client("iam")
 
-        # Check if user exists, create if requested
+        # Validate target principal exists
         try:
-            iam_client.get_user(UserName=username)
+            if attach_to_type == "user":
+                iam_client.get_user(UserName=attach_to_name)
+            elif attach_to_type == "role":
+                iam_client.get_role(RoleName=attach_to_name)
+            else:
+                print(f"❌ Unknown attach_to_type: {attach_to_type}")
+                return False, None
         except iam_client.exceptions.NoSuchEntityException:
-            print(f"❌ User {username} does not exist and create_user is False")
-            return False
+            print(f"❌ {attach_to_type.capitalize()} {attach_to_name} does not exist")
+            return False, None
 
-        # Check if the policy is already attached
+        # Check if already attached
+        already_attached = False
         try:
-            attached_policies = iam_client.list_attached_user_policies(
-                UserName=username
-            )
-
-            policy_already_attached = any(
-                policy["PolicyArn"] == policy_arn
-                for policy in attached_policies["AttachedPolicies"]
-            )
-
-            if policy_already_attached:
-                print(f"✅ {policy_name} policy already attached to user {username}")
-                return True
-
-        except ClientError as e:
-            print(f"⚠️  Could not check existing policies for {username}: {e}")
-
-        # Attach the policy to the user
-        try:
-            iam_client.attach_user_policy(UserName=username, PolicyArn=policy_arn)
-            print(f"✅ Successfully attached {policy_name} policy to user {username}")
-
-            # Verify the policy was attached
-            time.sleep(2)
-            attached_policies = iam_client.list_attached_user_policies(
-                UserName=username
-            )
-            target_policy = next(
-                (
-                    policy
-                    for policy in attached_policies["AttachedPolicies"]
-                    if policy["PolicyArn"] == policy_arn
-                ),
-                None,
-            )
-
-            if target_policy:
-                print(
-                    f"✅ Verification successful: {target_policy['PolicyName']} is attached"
+            if attach_to_type == "user":
+                attached = iam_client.list_attached_user_policies(
+                    UserName=attach_to_name
                 )
+            else:
+                attached = iam_client.list_attached_role_policies(
+                    RoleName=attach_to_name
+                )
+            already_attached = any(
+                p.get("PolicyArn") == policy_arn for p in attached["AttachedPolicies"]
+            )
+        except ClientError as e:
+            print(f"⚠️  Could not list attached policies: {e}")
 
-            return True
+        if already_attached:
+            print(
+                f"✅ Policy already attached to {attach_to_type} {attach_to_name}"
+            )
+            return True, policy_arn
+
+        # Attach policy
+        try:
+            if attach_to_type == "user":
+                iam_client.attach_user_policy(
+                    UserName=attach_to_name, PolicyArn=policy_arn
+                )
+            else:
+                iam_client.attach_role_policy(
+                    RoleName=attach_to_name, PolicyArn=policy_arn
+                )
+            print(
+                f"✅ Attached policy to {attach_to_type} {attach_to_name}"
+            )
+
+            return True, policy_arn
 
         except ClientError as e:
-            print(f"❌ Failed to attach {policy_name} policy to user {username}: {e}")
-            return False
+            print(
+                f"❌ Failed to attach policy to {attach_to_type} {attach_to_name}: {e}"
+            )
+            return False, None
 
     except Exception as e:
-        print(f"❌ Unexpected error while granting policy to user {username}: {e}")
-        return False
+        print(f"❌ Failed to ensure/attach policy: {e}")
+        return False, None
+
+
+def create_policy(policy_name: str, policy_document: Dict) -> Optional[str]:
+    """
+    Create a customer-managed IAM policy if it does not exist.
+
+    Returns the policy ARN (existing or newly created) if successful, otherwise None.
+    """
+    try:
+        iam_client = boto3.client("iam")
+        sts_client = boto3.client("sts")
+        account_id = sts_client.get_caller_identity()["Account"]
+        policy_arn = f"arn:aws:iam::{account_id}:policy/{policy_name}"
+
+        # Try to create policy
+        try:
+            iam_client.create_policy(
+                PolicyName=policy_name,
+                PolicyDocument=json.dumps(policy_document),
+            )
+            print(f"✅ Created IAM policy {policy_name}")
+        except iam_client.exceptions.EntityAlreadyExistsException:
+            print(f"✅ IAM policy {policy_name} already exists")
+
+        return policy_arn
+    except Exception as e:
+        print(f"❌ Failed to create policy {policy_name}: {e}")
+        return None
+
+
+def attach_custom_policy(
+    policy_name: str,
+    policy_json_path: str,
+    attach_to_type: str,
+    attach_to_name: str,
+    replacements: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
+    """
+    Ensure a custom IAM policy exists from a JSON file and attach it to a user or role.
+
+    Args:
+        policy_name: Name for the IAM policy
+        policy_json_path: Filesystem path to the policy JSON template
+        attach_to_type: "user" or "role"
+        attach_to_name: IAM UserName or RoleName to attach the policy to
+        replacements: Optional dict of string replacements to apply to the JSON template
+
+    Returns:
+        Policy ARN if successful, None if failed
+    """
+    try:
+        with open(policy_json_path, "r", encoding="utf-8") as f:
+            policy_content = f.read()
+        if replacements:
+            for key, value in replacements.items():
+                policy_content = policy_content.replace(key, value)
+        policy_document = json.loads(policy_content)
+
+        # Create (or resolve) the policy ARN
+        policy_arn = create_policy(policy_name=policy_name, policy_document=policy_document)
+        if not policy_arn:
+            print(f"❌ Failed to create policy {policy_name}")
+            return None
+
+        # Attach to the target principal
+        success, _ = attach_policy(
+            attach_to_type=attach_to_type,
+            attach_to_name=attach_to_name,
+            policy_arn=policy_arn,
+        )
+        if success:
+            return policy_arn
+        return None
+    except Exception as e:
+        print(
+            "❌ Failed to attach custom policy "
+            f"{policy_name} for {attach_to_type} {attach_to_name}: {e}"
+        )
+        return None
 
 
 def create_guardrail(region_name: str = "us-east-1"):
@@ -109,7 +186,10 @@ def create_guardrail(region_name: str = "us-east-1"):
     name = "aws-assistant-guardrail"
 
     # Define description
-    description = "AWS assistant guardrail: deny hacking topics on input and apply violence category moderation on input."
+    description = (
+        "AWS assistant guardrail: deny hacking topics on input and apply violence "
+        "category moderation on input."
+    )
 
     try:
         response = control_client.create_guardrail(
@@ -129,7 +209,8 @@ def create_guardrail(region_name: str = "us-east-1"):
                     {
                         "name": "Security Exploits and Hacking",
                         "definition": (
-                            "Content describing or instructing on security exploits, hacking techniques, or malicious activities against AWS or any systems."
+                            "Content describing or instructing on security exploits, hacking "
+                            "techniques, or malicious activities against AWS or any systems."
                         ),
                         "examples": [
                             "hack",
@@ -170,9 +251,7 @@ def create_guardrail(region_name: str = "us-east-1"):
                     print("✅ Guardrail already exists, reusing it")
                     # Get full details if needed
                     guardrail_id = existing.get("guardrailId") or existing.get("id")
-                    guardrail_arn = existing.get("guardrailArn") or existing.get(
-                        "arn"
-                    )
+                    guardrail_arn = existing.get("guardrailArn") or existing.get("arn")
                     return {
                         "guardrailId": guardrail_id,
                         "guardrailArn": guardrail_arn,
@@ -415,9 +494,7 @@ def create_knowledge_base(
         try:
             kb_response = bedrock_agent_client.create_knowledge_base(
                 name=kb_name,
-                description=(
-                    "Knowledge base using S3 Vectors for document retrieval"
-                ),
+                description=("Knowledge base using S3 Vectors for document retrieval"),
                 roleArn=kb_role_arn,
                 knowledgeBaseConfiguration={
                     "type": "VECTOR",
@@ -572,37 +649,19 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
 
             for policy_arn in policies:
                 iam_client.attach_role_policy(RoleName=role_name, PolicyArn=policy_arn)
-                print(
-                    f"✅ Attached policy {policy_arn} to role {role_name}"
-                )
+                print(f"✅ Attached policy {policy_arn} to role {role_name}")
 
-            # Create custom policy for S3 Vectors permissions
-            s3vectors_policy = {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {"Effect": "Allow", "Action": ["s3vectors:*"], "Resource": "*"}
-                ],
-            }
-
+            # Ensure custom policy for S3 Vectors permissions
             custom_policy_name = f"{role_name}-s3vectors-policy"
-            try:
-                iam_client.create_policy(
-                    PolicyName=custom_policy_name,
-                    PolicyDocument=json.dumps(s3vectors_policy),
-                    Description="S3 Vectors permissions for Bedrock Knowledge Base",
-                )
-                print(
-                    f"✅ Created custom policy {custom_policy_name}"
-                )
-            except iam_client.exceptions.EntityAlreadyExistsException:
-                print(f"✅ Custom policy {custom_policy_name} already exists")
-
-            # Attach the custom policy
-            custom_policy_arn = f"arn:aws:iam::{account_id}:policy/{custom_policy_name}"
-            iam_client.attach_role_policy(
-                RoleName=role_name, PolicyArn=custom_policy_arn
+            policy_json_path = os.path.join(
+                os.path.dirname(__file__), "policies", "S3VectorsFullAccess.json"
             )
-            print(f"✅ Attached custom policy {custom_policy_arn} to role {role_name}")
+            attach_custom_policy(
+                policy_name=custom_policy_name,
+                policy_json_path=policy_json_path,
+                attach_to_type="role",
+                attach_to_name=role_name,
+            )
 
             # Wait for role to be fully created
             print("⏳ Waiting for role to propagate...")
@@ -673,7 +732,10 @@ def setup_complete_knowledge_base(
             not os.path.exists(documents_folder)
             or len(os.listdir(documents_folder)) == 0
         ):
-            zip_url = "https://codesignal-staging-assets.s3.amazonaws.com/uploads/1755867202135/techco-kb-sample-md.zip"
+            zip_url = (
+                "https://codesignal-staging-assets.s3.amazonaws.com/uploads/"
+                "1755867202135/techco-kb-sample-md.zip"
+            )
             zip_path = os.path.join(os.getcwd(), "techco-data.zip")
             # Download the zip file
             with urllib.request.urlopen(zip_url) as response, open(
@@ -747,3 +809,4 @@ def setup_complete_knowledge_base(
     except Exception as e:
         print(f"❌ Complete knowledge base setup failed: {str(e)}")
         return None
+

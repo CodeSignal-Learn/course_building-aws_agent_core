@@ -1,11 +1,19 @@
 import os
-import boto3
-import json
-from common import create_guardrail, grant_user_policy, setup_complete_knowledge_base
+
+from common import (
+    create_guardrail,
+    setup_complete_knowledge_base,
+    attach_custom_policy,
+    attach_policy,
+)
 from enableModel import enable_model
 
 # Configuration
-BEDROCK_MODELS = ["anthropic.claude-sonnet-4-20250514-v1:0", "amazon.titan-embed-text-v2:0", "amazon.nova-pro-v1:0"]
+BEDROCK_MODELS = [
+    "anthropic.claude-sonnet-4-20250514-v1:0",
+    "amazon.titan-embed-text-v2:0",
+    "amazon.nova-pro-v1:0",
+]
 USER_POLICIES = ["arn:aws:iam::aws:policy/AmazonBedrockFullAccess"]
 DOCUMENTS_FOLDER = os.path.join(os.getcwd(), "docs")
 VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
@@ -13,48 +21,27 @@ VECTOR_INDEX_NAME = "bedrock-vector-index"
 KB_NAME = "bedrock-knowledge-base"
 REGION_NAME = "us-east-1"
 
-S3VectorsFullAccess = {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "S3VectorsFullAccess",
-            "Effect": "Allow",
-            "Action": [
-                "s3vectors:CreateVectorBucket",
-                "s3vectors:DeleteVectorBucket",
-                "s3vectors:ListVectorBuckets",
-                "s3vectors:CreateIndex",
-                "s3vectors:DeleteIndex",
-                "s3vectors:ListIndexes",
-                "s3vectors:GetIndex",
-                "s3vectors:PutVectors",
-                "s3vectors:QueryVectors",
-                "s3vectors:GetVectors",
-                "s3vectors:DeleteVectors"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
+POLICIES_DIR = os.path.join(os.path.dirname(__file__), "policies")
+
 
 def main():
     # 1. Grant user policies
     for policy in USER_POLICIES:
-        if not grant_user_policy("learner", policy):
+        success, _ = attach_policy(
+            attach_to_type="user",
+            attach_to_name="learner",
+            policy_arn=policy,
+        )
+        if not success:
             print(f"❌ Failed to grant {policy} to learner. Exiting.")
             exit(1)
 
-    # 1.1 grant s3vectors full access
-    iam = boto3.client("iam")
-    policy_document = json.dumps(S3VectorsFullAccess)
-    policy = iam.create_policy(
-        PolicyName="S3VectorsFullAccess",
-        PolicyDocument=policy_document
-    )
-    policy_arn = policy["Policy"]["Arn"]
-    iam.attach_user_policy(
-        UserName="learner",
-        PolicyArn=policy_arn
+    # 1.1 grant s3vectors full access via custom policy file
+    attach_custom_policy(
+        policy_name="S3VectorsFullAccess",
+        policy_json_path=os.path.join(POLICIES_DIR, "S3VectorsFullAccess.json"),
+        attach_to_type="user",
+        attach_to_name="learner",
     )
     print("✅ S3VectorsFullAccess policy created and attached to learner")
 
@@ -87,7 +74,7 @@ def main():
     # Check if knowledge base setup was successful
     if result:
         knowledge_base_id, vector_index_arn = result
-        print(f"\nKnowledge Base is ready to use!")
+        print("\nKnowledge Base is ready to use!")
         print(f"Knowledge Base ID: {knowledge_base_id}")
         print(f"Vector Index ARN: {vector_index_arn}")
 
@@ -95,10 +82,6 @@ def main():
         print("❌ Failed to create knowledge base. Exiting.")
         exit(1)
 
+
 if __name__ == "__main__":
     main()
-
-
-
-
-

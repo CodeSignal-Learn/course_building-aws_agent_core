@@ -1,14 +1,21 @@
 from pprint import pprint
-from common import grant_user_policy
+
+from common import attach_policy
 from enableModel import enable_model
 
 # Bedrock model ID to enable
 MODEL_ID = "anthropic.claude-sonnet-4-20250514-v1:0"
 BEDROCK_POLICY_ARN = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
 
+
 def main():
     # 1. Give Bedrock full access to learner user
-    if not grant_user_policy("learner", BEDROCK_POLICY_ARN):
+    success, _ = attach_policy(
+        attach_to_type="user",
+        attach_to_name="learner",
+        policy_arn=BEDROCK_POLICY_ARN,
+    )
+    if not success:
         print("❌ Failed to grant Bedrock access to learner. Exiting.")
         exit(1)
 
@@ -21,6 +28,7 @@ def main():
     else:
         print(f"❌ Failed to enable Bedrock model {MODEL_ID}")
         exit(1)
+
 
 if __name__ == "__main__":
     main()

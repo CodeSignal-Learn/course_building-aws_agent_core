@@ -6,8 +6,9 @@ import subprocess
 import boto3
 from common import (
     create_guardrail,
-    grant_user_policy,
     setup_complete_knowledge_base,
+    attach_custom_policy,
+    attach_policy,
 )
 from enableModel import enable_model
 
@@ -41,9 +42,7 @@ def create_execution_role():
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "bedrock-agentcore.amazonaws.com"
-                            },
+                            "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -54,86 +53,22 @@ def create_execution_role():
     except iam.exceptions.EntityAlreadyExistsException:
         print("✅ IAM role AmazonBedrockAgentCoreSDKRuntime already exists")
 
-    # Load and prepare policy document
-    policy_path = os.path.join(
+    # Ensure execution policy exists and is attached to the role
+    policy_name = "AmazonBedrockAgentCoreRuntimeExecutionPolicy"
+    policy_json_path = os.path.join(
         os.path.dirname(__file__),
+        "policies",
         "BedrockAgentCoreRuntimeExecutionPolicy.json",
     )
-    with open(policy_path, "r") as f:
-        policy_content = f.read()
-
-    # Replace placeholders with actual account ID
-    policy_content = policy_content.replace("{AWS_ACCOUNT_ID}", ACCOUNT_ID)
-    policy_document = json.loads(policy_content)
-
-    # Create policy if it doesn't exist
-    policy_name = "AmazonBedrockAgentCoreRuntimeExecutionPolicy"
-    policy_arn = f"arn:aws:iam::{ACCOUNT_ID}:policy/{policy_name}"
-
-    try:
-        iam.create_policy(
-            PolicyName=policy_name,
-            PolicyDocument=json.dumps(policy_document),
-        )
-        print(f"✅ Created IAM policy {policy_name}")
-    except iam.exceptions.EntityAlreadyExistsException:
-        print(f"✅ IAM policy {policy_name} already exists")
-
-    # Attach policy to role
-    try:
-        iam.attach_role_policy(
-            RoleName="AmazonBedrockAgentCoreSDKRuntime",
-            PolicyArn=policy_arn,
-        )
-        print("✅ Attached policy to role")
-    except Exception as e:
-        if "already attached" in str(e).lower():
-            print("✅ Policy already attached to role")
-        else:
-            raise
-
-    return f"arn:aws:iam::{ACCOUNT_ID}:role/AmazonBedrockAgentCoreSDKRuntime"
-
-
-def create_authorizer_config():
-    """Return AgentCore authorizer config if Cognito details are provided.
-
-    For AWS-hosted AgentCore, the OIDC discovery URL must point to a valid
-    Cognito User Pool issuer, and the allowed audience must match the Cognito
-    App Client ID. Using the AWS account ID here is invalid and causes the
-    runtime creation to fail with an OIDC discovery error.
-
-    Set environment variables to enable auth:
-      - COGNITO_USER_POOL_ID (e.g., "us-east-1_Abc123xyz")
-      - COGNITO_APP_CLIENT_ID (the User Pool App Client ID)
-
-    If missing, we skip configuring an authorizer to allow deployment to
-    proceed without OIDC until proper values are available.
-
-    TODO: Seems to work without this, but we should figure out why.
-    """
-
-    user_pool_id = os.getenv("COGNITO_USER_POOL_ID")
-    app_client_id = os.getenv("COGNITO_APP_CLIENT_ID")
-
-    if not user_pool_id or not app_client_id:
-        print(
-            "⚠️  Skipping authorizer config. Set COGNITO_USER_POOL_ID and "
-            "COGNITO_APP_CLIENT_ID to enable JWT auth."
-        )
-        return None
-
-    discovery_url = (
-        f"https://cognito-idp.{REGION_NAME}.amazonaws.com/"
-        f"{user_pool_id}/.well-known/openid-configuration"
+    attach_custom_policy(
+        policy_name=policy_name,
+        policy_json_path=policy_json_path,
+        attach_to_type="role",
+        attach_to_name="AmazonBedrockAgentCoreSDKRuntime",
+        replacements={"{AWS_ACCOUNT_ID}": ACCOUNT_ID},
     )
 
-    return {
-        "customJWTAuthorizer": {
-            "discoveryUrl": discovery_url,
-            "allowedAudience": [app_client_id],
-        },
-    }
+    return f"arn:aws:iam::{ACCOUNT_ID}:role/AmazonBedrockAgentCoreSDKRuntime"
 
 
 def configure_agent(
@@ -152,13 +87,20 @@ def configure_agent(
     entrypoint_path = os.path.join(os.path.dirname(__file__), entrypoint)
 
     cfg_cmd = [
-        "agentcore", "configure",
-        "--entrypoint", entrypoint_path,
-        "--name", name,
-        "--region", region,
-        "--protocol", protocol,
-        "--ecr", "auto",  # avoids the “Press Enter to auto-create ECR” prompt
-        "--requirements-file", requirements_file,
+        "agentcore",
+        "configure",
+        "--entrypoint",
+        entrypoint_path,
+        "--name",
+        name,
+        "--region",
+        region,
+        "--protocol",
+        protocol,
+        "--ecr",
+        "auto",  # avoids the “Press Enter to auto-create ECR” prompt
+        "--requirements-file",
+        requirements_file,
         "--disable-otel",  # Disable OpenTelemetry noise
     ]
 
@@ -172,9 +114,7 @@ def configure_agent(
     subprocess.run(cfg_cmd, check=True)
 
 
-def launch_agent(
-    guardrail_id: str
-):
+def launch_agent(guardrail_id: str):
     launch_cmd = ["agentcore", "launch"]
     local = os.getenv("LOCAL_DEPLOYMENT", "true").lower()
     if local == "true":
@@ -189,7 +129,12 @@ def launch_agent(
 def main():
     # 1. Grant user policies
     for policy in USER_POLICIES:
-        if not grant_user_policy("learner", policy):
+        success, _ = attach_policy(
+            attach_to_type="user",
+            attach_to_name="learner",
+            policy_arn=policy,
+        )
+        if not success:
             print(f"❌ Failed to grant {policy} to learner. Exiting.")
             exit(1)
 
