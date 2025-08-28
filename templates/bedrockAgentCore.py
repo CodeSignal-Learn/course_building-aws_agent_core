@@ -85,6 +85,7 @@ def configure_agent(
         )
 
     entrypoint_path = os.path.join(os.path.dirname(__file__), entrypoint)
+    requirements_path = os.path.join(os.path.dirname(__file__), requirements_file)
 
     cfg_cmd = [
         "agentcore",
@@ -100,7 +101,7 @@ def configure_agent(
         "--ecr",
         "auto",  # avoids the “Press Enter to auto-create ECR” prompt
         "--requirements-file",
-        requirements_file,
+        requirements_path,
         "--disable-otel",  # Disable OpenTelemetry noise
     ]
 
