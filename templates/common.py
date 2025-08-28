@@ -1,14 +1,15 @@
-import os
 import json
-import time
-import boto3
-import uuid
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple
-from botocore.exceptions import ClientError
-import urllib.request
-import zipfile
+import os
 import shutil
+import time
+import urllib.request
+import uuid
+import zipfile
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import boto3
+from botocore.exceptions import ClientError
 
 
 def grant_user_policy(username: str, policy_arn: str) -> bool:
@@ -24,10 +25,10 @@ def grant_user_policy(username: str, policy_arn: str) -> bool:
     """
     try:
         # Extract policy name from ARN for display purposes
-        policy_name = policy_arn.split('/')[-1] if '/' in policy_arn else policy_arn
+        policy_name = policy_arn.split("/")[-1] if "/" in policy_arn else policy_arn
         print(f"Granting {policy_name} to user: {username}")
 
-        iam_client = boto3.client('iam')
+        iam_client = boto3.client("iam")
 
         # Check if user exists, create if requested
         try:
@@ -38,11 +39,13 @@ def grant_user_policy(username: str, policy_arn: str) -> bool:
 
         # Check if the policy is already attached
         try:
-            attached_policies = iam_client.list_attached_user_policies(UserName=username)
+            attached_policies = iam_client.list_attached_user_policies(
+                UserName=username
+            )
 
             policy_already_attached = any(
-                policy['PolicyArn'] == policy_arn
-                for policy in attached_policies['AttachedPolicies']
+                policy["PolicyArn"] == policy_arn
+                for policy in attached_policies["AttachedPolicies"]
             )
 
             if policy_already_attached:
@@ -54,22 +57,27 @@ def grant_user_policy(username: str, policy_arn: str) -> bool:
 
         # Attach the policy to the user
         try:
-            iam_client.attach_user_policy(
-                UserName=username,
-                PolicyArn=policy_arn
-            )
+            iam_client.attach_user_policy(UserName=username, PolicyArn=policy_arn)
             print(f"✅ Successfully attached {policy_name} policy to user {username}")
 
             # Verify the policy was attached
             time.sleep(2)
-            attached_policies = iam_client.list_attached_user_policies(UserName=username)
+            attached_policies = iam_client.list_attached_user_policies(
+                UserName=username
+            )
             target_policy = next(
-                (policy for policy in attached_policies['AttachedPolicies']
-                 if policy['PolicyArn'] == policy_arn), None
+                (
+                    policy
+                    for policy in attached_policies["AttachedPolicies"]
+                    if policy["PolicyArn"] == policy_arn
+                ),
+                None,
             )
 
             if target_policy:
-                print(f"✅ Verification successful: {target_policy['PolicyName']} is attached")
+                print(
+                    f"✅ Verification successful: {target_policy['PolicyName']} is attached"
+                )
 
             return True
 
@@ -109,7 +117,11 @@ def create_guardrail(region_name: str = "us-east-1"):
             description=description,
             contentPolicyConfig={
                 "filtersConfig": [
-                    {"type": "VIOLENCE", "inputStrength": "HIGH", "outputStrength": "NONE"},
+                    {
+                        "type": "VIOLENCE",
+                        "inputStrength": "HIGH",
+                        "outputStrength": "NONE",
+                    },
                 ]
             },
             topicPolicyConfig={
@@ -130,12 +142,12 @@ def create_guardrail(region_name: str = "us-east-1"):
                 ]
             },
             blockedInputMessaging=blocked_message,
-            blockedOutputsMessaging=blocked_message
+            blockedOutputsMessaging=blocked_message,
         )
 
         # Check if guardrail creation was successful
         if "guardrailId" in response and "guardrailArn" in response:
-            print(f"✅ Guardrail created successfully!")
+            print("✅ Guardrail created successfully!")
             print(f"Guardrail ID: {response['guardrailId']}")
             print(f"Guardrail ARN: {response['guardrailArn']}")
             print(f"Version: {response.get('version', 'N/A')}")
@@ -145,7 +157,31 @@ def create_guardrail(region_name: str = "us-east-1"):
             return None
 
     except Exception as e:
-        print(f"❌ Failed to create guardrail: {str(e)}")
+        # If guardrail with the same name already exists, reuse it
+        message = str(e)
+        if "ConflictException" in message or "already has this name" in message:
+            try:
+                summaries = control_client.list_guardrails().get("guardrails", [])
+                existing = next(
+                    (g for g in summaries if g.get("name") == name),
+                    None,
+                )
+                if existing:
+                    print("✅ Guardrail already exists, reusing it")
+                    # Get full details if needed
+                    guardrail_id = existing.get("guardrailId") or existing.get("id")
+                    guardrail_arn = existing.get("guardrailArn") or existing.get(
+                        "arn"
+                    )
+                    return {
+                        "guardrailId": guardrail_id,
+                        "guardrailArn": guardrail_arn,
+                        "version": existing.get("version", "DRAFT"),
+                    }
+            except Exception as inner:
+                print(f"⚠️  Failed to look up existing guardrail: {inner}")
+
+        print(f"❌ Failed to create guardrail: {message}")
         return None
 
 
@@ -170,17 +206,17 @@ def load_documents_from_folder(folder_path: str) -> List[Dict]:
         for file_path in folder.iterdir():
             if file_path.is_file():
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(file_path, "r", encoding="utf-8") as f:
                         content = f.read().strip()
 
                     if content:
-                        documents.append({
-                            "key": file_path.stem,
-                            "content": content,
-                            "metadata": {
-                                "filename": file_path.name
+                        documents.append(
+                            {
+                                "key": file_path.stem,
+                                "content": content,
+                                "metadata": {"filename": file_path.name},
                             }
-                        })
+                        )
 
                 except Exception as e:
                     print(f"⚠️  Error loading {file_path.name}: {e}")
@@ -193,8 +229,12 @@ def load_documents_from_folder(folder_path: str) -> List[Dict]:
         return []
 
 
-def setup_s3_vectors(s3_vectors_client, vector_bucket_name: str, vector_index_name: str,
-                     embedding_dimensions: int = 1024) -> Optional[str]:
+def setup_s3_vectors(
+    s3_vectors_client,
+    vector_bucket_name: str,
+    vector_index_name: str,
+    embedding_dimensions: int = 1024,
+) -> Optional[str]:
     """
     Create S3 Vectors bucket and index for knowledge base storage.
 
@@ -250,10 +290,15 @@ def setup_s3_vectors(s3_vectors_client, vector_bucket_name: str, vector_index_na
         return None
 
 
-def vectorize_and_store_documents(documents: List[Dict], s3_vectors_client, bedrock_runtime_client,
-                                vector_bucket_name: str, vector_index_name: str,
-                                embedding_model_id: str = "amazon.titan-embed-text-v2:0",
-                                embedding_dimensions: int = 1024) -> bool:
+def vectorize_and_store_documents(
+    documents: List[Dict],
+    s3_vectors_client,
+    bedrock_runtime_client,
+    vector_bucket_name: str,
+    vector_index_name: str,
+    embedding_model_id: str = "amazon.titan-embed-text-v2:0",
+    embedding_dimensions: int = 1024,
+) -> bool:
     """
     Generate embeddings and store documents in S3 Vectors.
 
@@ -292,25 +337,26 @@ def vectorize_and_store_documents(documents: List[Dict], s3_vectors_client, bedr
             try:
                 # Get embedding from Bedrock
                 response = bedrock_runtime_client.invoke_model(
-                    modelId=embedding_model_id,
-                    body=json.dumps(embedding_request)
+                    modelId=embedding_model_id, body=json.dumps(embedding_request)
                 )
 
                 response_body = json.loads(response["body"].read())
                 embedding = response_body["embedding"]
 
                 # Prepare vector for insertion
-                vectors_to_insert.append({
-                    "key": doc["key"],
-                    "data": {
-                        "float32": [float(x) for x in embedding]
-                    },
-                    "metadata": {
-                        "AMAZON_BEDROCK_TEXT": doc["content"],
-                        "x-amz-bedrock-kb-source-uri": doc["metadata"].get("filename", doc["key"]),
-                        **doc["metadata"],
-                    },
-                })
+                vectors_to_insert.append(
+                    {
+                        "key": doc["key"],
+                        "data": {"float32": [float(x) for x in embedding]},
+                        "metadata": {
+                            "AMAZON_BEDROCK_TEXT": doc["content"],
+                            "x-amz-bedrock-kb-source-uri": doc["metadata"].get(
+                                "filename", doc["key"]
+                            ),
+                            **doc["metadata"],
+                        },
+                    }
+                )
 
             except Exception as e:
                 print(f"⚠️  Failed to process {doc['key']}: {e}")
@@ -327,7 +373,9 @@ def vectorize_and_store_documents(documents: List[Dict], s3_vectors_client, bedr
             vectors=vectors_to_insert,
         )
 
-        print(f"✅ Successfully uploaded {len(vectors_to_insert)} documents to S3 Vectors")
+        print(
+            f"✅ Successfully uploaded {len(vectors_to_insert)} documents to S3 Vectors"
+        )
         return True
 
     except Exception as e:
@@ -335,10 +383,15 @@ def vectorize_and_store_documents(documents: List[Dict], s3_vectors_client, bedr
         return False
 
 
-def create_knowledge_base(bedrock_agent_client, vector_index_arn: str, kb_name: str,
-                         kb_role_arn: str, region_name: str = "us-east-1",
-                         embedding_model_id: str = "amazon.titan-embed-text-v2:0",
-                         embedding_dimensions: int = 1024) -> Optional[str]:
+def create_knowledge_base(
+    bedrock_agent_client,
+    vector_index_arn: str,
+    kb_name: str,
+    kb_role_arn: str,
+    region_name: str = "us-east-1",
+    embedding_model_id: str = "amazon.titan-embed-text-v2:0",
+    embedding_dimensions: int = 1024,
+) -> Optional[str]:
     """
     Create Bedrock Knowledge Base connected to S3 Vectors.
 
@@ -357,32 +410,59 @@ def create_knowledge_base(bedrock_agent_client, vector_index_arn: str, kb_name: 
     try:
         print("Creating Bedrock Knowledge Base...")
 
-        # Create Knowledge Base
-        kb_response = bedrock_agent_client.create_knowledge_base(
-            name=kb_name,
-            description="Knowledge base using S3 Vectors for document retrieval",
-            roleArn=kb_role_arn,
-            knowledgeBaseConfiguration={
-                "type": "VECTOR",
-                "vectorKnowledgeBaseConfiguration": {
-                    "embeddingModelArn": (
-                        f"arn:aws:bedrock:{region_name}::foundation-model/{embedding_model_id}"
-                    ),
-                    "embeddingModelConfiguration": {
-                        "bedrockEmbeddingModelConfiguration": {
-                            "dimensions": embedding_dimensions
-                        }
+        # Try to create Knowledge Base; if already exists, look it up
+        kb_response = None
+        try:
+            kb_response = bedrock_agent_client.create_knowledge_base(
+                name=kb_name,
+                description=(
+                    "Knowledge base using S3 Vectors for document retrieval"
+                ),
+                roleArn=kb_role_arn,
+                knowledgeBaseConfiguration={
+                    "type": "VECTOR",
+                    "vectorKnowledgeBaseConfiguration": {
+                        "embeddingModelArn": (
+                            f"arn:aws:bedrock:{region_name}::foundation-model/"
+                            f"{embedding_model_id}"
+                        ),
+                        "embeddingModelConfiguration": {
+                            "bedrockEmbeddingModelConfiguration": {
+                                "dimensions": embedding_dimensions
+                            }
+                        },
                     },
                 },
-            },
-            storageConfiguration={
-                "type": "S3_VECTORS",
-                "s3VectorsConfiguration": {
-                    "indexArn": vector_index_arn,
+                storageConfiguration={
+                    "type": "S3_VECTORS",
+                    "s3VectorsConfiguration": {
+                        "indexArn": vector_index_arn,
+                    },
                 },
-            },
-            clientToken=str(uuid.uuid4()),
-        )
+                clientToken=str(uuid.uuid4()),
+            )
+        except Exception as e:
+            message = str(e)
+            if "ConflictException" in message or "already exists" in message:
+                summaries = bedrock_agent_client.list_knowledge_bases().get(
+                    "knowledgeBaseSummaries", []
+                )
+                existing = next(
+                    (k for k in summaries if k.get("name") == kb_name),
+                    None,
+                )
+                if existing:
+                    knowledge_base_id = existing.get("knowledgeBaseId") or existing.get(
+                        "id"
+                    )
+                    print(
+                        "✅ Knowledge Base already exists, reusing it: "
+                        f"{knowledge_base_id}"
+                    )
+                    return knowledge_base_id
+                raise
+            else:
+                raise
 
         knowledge_base_id = kb_response["knowledgeBase"]["knowledgeBaseId"]
         print(f"✅ Created Knowledge Base ID: {knowledge_base_id}")
@@ -394,8 +474,9 @@ def create_knowledge_base(bedrock_agent_client, vector_index_arn: str, kb_name: 
         return None
 
 
-def wait_for_knowledge_base_ready(bedrock_agent_client, knowledge_base_id: str,
-                                max_wait_time: int = 60) -> bool:
+def wait_for_knowledge_base_ready(
+    bedrock_agent_client, knowledge_base_id: str, max_wait_time: int = 60
+) -> bool:
     """
     Wait for Knowledge Base to be ready.
 
@@ -447,8 +528,8 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
     try:
         print(f"Creating Knowledge Base IAM role: {role_name}")
 
-        iam_client = boto3.client('iam')
-        sts_client = boto3.client('sts')
+        iam_client = boto3.client("iam")
+        sts_client = boto3.client("sts")
 
         # Trust policy that allows Bedrock to assume this role
         trust_policy = {
@@ -456,15 +537,13 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
             "Statement": [
                 {
                     "Effect": "Allow",
-                    "Principal": {
-                        "Service": "bedrock.amazonaws.com"
-                    },
-                    "Action": "sts:AssumeRole"
+                    "Principal": {"Service": "bedrock.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
                 }
-            ]
+            ],
         }
 
-        account_id = sts_client.get_caller_identity()['Account']
+        account_id = sts_client.get_caller_identity()["Account"]
         role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
 
         # Check if role already exists
@@ -481,53 +560,47 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
             iam_client.create_role(
                 RoleName=role_name,
                 AssumeRolePolicyDocument=json.dumps(trust_policy),
-                Description="Execution role for Bedrock Knowledge Base operations"
+                Description="Execution role for Bedrock Knowledge Base operations",
             )
             print(f"✅ Created IAM role: {role_name}")
 
             # Attach the necessary policies for Knowledge Base
             policies = [
                 "arn:aws:iam::aws:policy/AmazonBedrockFullAccess",
-                "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+                "arn:aws:iam::aws:policy/AmazonS3FullAccess",
             ]
 
             for policy_arn in policies:
-                iam_client.attach_role_policy(
-                    RoleName=role_name,
-                    PolicyArn=policy_arn
+                iam_client.attach_role_policy(RoleName=role_name, PolicyArn=policy_arn)
+                print(
+                    f"✅ Attached policy {policy_arn} to role {role_name}"
                 )
-                print(f"✅ Attached policy {policy_arn} to role {role_name}")
 
             # Create custom policy for S3 Vectors permissions
             s3vectors_policy = {
                 "Version": "2012-10-17",
                 "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3vectors:*"
-                        ],
-                        "Resource": "*"
-                    }
-                ]
+                    {"Effect": "Allow", "Action": ["s3vectors:*"], "Resource": "*"}
+                ],
             }
-            
+
             custom_policy_name = f"{role_name}-s3vectors-policy"
             try:
                 iam_client.create_policy(
                     PolicyName=custom_policy_name,
                     PolicyDocument=json.dumps(s3vectors_policy),
-                    Description="S3 Vectors permissions for Bedrock Knowledge Base"
+                    Description="S3 Vectors permissions for Bedrock Knowledge Base",
                 )
-                print(f"✅ Created custom policy {custom_policy_name}")
+                print(
+                    f"✅ Created custom policy {custom_policy_name}"
+                )
             except iam_client.exceptions.EntityAlreadyExistsException:
                 print(f"✅ Custom policy {custom_policy_name} already exists")
 
             # Attach the custom policy
             custom_policy_arn = f"arn:aws:iam::{account_id}:policy/{custom_policy_name}"
             iam_client.attach_role_policy(
-                RoleName=role_name,
-                PolicyArn=custom_policy_arn
+                RoleName=role_name, PolicyArn=custom_policy_arn
             )
             print(f"✅ Attached custom policy {custom_policy_arn} to role {role_name}")
 
@@ -549,10 +622,15 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
 
             except Exception as check_error:
                 if attempt < max_retries - 1:
-                    print(f"⏳ Role not ready yet (attempt {attempt + 1}/{max_retries}), waiting {retry_delay}s...")
+                    print(
+                        f"⏳ Role not ready yet (attempt {attempt + 1}/{max_retries}), "
+                        f"waiting {retry_delay}s..."
+                    )
                     time.sleep(retry_delay)
                 else:
-                    print(f"❌ Role verification failed after {max_retries} attempts: {check_error}")
+                    print(
+                        f"❌ Role verification failed after {max_retries} attempts: {check_error}"
+                    )
                     return None
 
         return role_arn
@@ -562,11 +640,13 @@ def create_knowledge_base_role(role_name: str = "kb-service-role") -> Optional[s
         return None
 
 
-def setup_complete_knowledge_base(documents_folder: Optional[str] = None,
-                                 vector_bucket_name: str = "bedrock-vector-bucket",
-                                 vector_index_name: str = "bedrock-vector-index",
-                                 kb_name: str = "bedrock-knowledge-base",
-                                 region_name: str = "us-east-1") -> Optional[Tuple[str, str]]:
+def setup_complete_knowledge_base(
+    documents_folder: Optional[str] = None,
+    vector_bucket_name: str = "bedrock-vector-bucket",
+    vector_index_name: str = "bedrock-vector-index",
+    kb_name: str = "bedrock-knowledge-base",
+    region_name: str = "us-east-1",
+) -> Optional[Tuple[str, str]]:
     """
     Complete setup function that creates everything needed for the Knowledge Base.
 
@@ -587,13 +667,18 @@ def setup_complete_knowledge_base(documents_folder: Optional[str] = None,
 
         # Default documents folder path
         if documents_folder is None:
-            documents_folder = os.path.join(os.path.dirname(__file__), "docs/")
+            documents_folder = os.path.join(os.getcwd(), "docs/")
 
-        if not os.path.exists(documents_folder) or len(os.listdir(documents_folder)) == 0:
+        if (
+            not os.path.exists(documents_folder)
+            or len(os.listdir(documents_folder)) == 0
+        ):
             zip_url = "https://codesignal-staging-assets.s3.amazonaws.com/uploads/1755867202135/techco-kb-sample-md.zip"
-            zip_path = "techco-data.zip"
+            zip_path = os.path.join(os.getcwd(), "techco-data.zip")
             # Download the zip file
-            with urllib.request.urlopen(zip_url) as response, open(zip_path, "wb") as out_file:
+            with urllib.request.urlopen(zip_url) as response, open(
+                zip_path, "wb"
+            ) as out_file:
                 shutil.copyfileobj(response, out_file)
             # Extract the zip file
             with zipfile.ZipFile(zip_path, "r") as zf:
@@ -604,17 +689,23 @@ def setup_complete_knowledge_base(documents_folder: Optional[str] = None,
 
         # Create AWS clients
         s3_vectors_client = boto3.client("s3vectors", region_name=region_name)
-        bedrock_runtime_client = boto3.client("bedrock-runtime", region_name=region_name)
+        bedrock_runtime_client = boto3.client(
+            "bedrock-runtime", region_name=region_name
+        )
         bedrock_agent_client = boto3.client("bedrock-agent", region_name=region_name)
 
         # Step 1: Load documents
         documents = load_documents_from_folder(documents_folder)
         if not documents:
-            print("❌ No documents found. Please add documents to the folder before running setup.")
+            print(
+                "❌ No documents found. Please add documents to the folder before running setup."
+            )
             return None
 
         # Step 2: Set up S3 Vectors
-        vector_index_arn = setup_s3_vectors(s3_vectors_client, vector_bucket_name, vector_index_name)
+        vector_index_arn = setup_s3_vectors(
+            s3_vectors_client, vector_bucket_name, vector_index_name
+        )
         if not vector_index_arn:
             return None
 
@@ -624,13 +715,19 @@ def setup_complete_knowledge_base(documents_folder: Optional[str] = None,
             return None
 
         # Step 4: Vectorize and store documents
-        if not vectorize_and_store_documents(documents, s3_vectors_client, bedrock_runtime_client,
-                                           vector_bucket_name, vector_index_name):
+        if not vectorize_and_store_documents(
+            documents,
+            s3_vectors_client,
+            bedrock_runtime_client,
+            vector_bucket_name,
+            vector_index_name,
+        ):
             return None
 
         # Step 5: Create Knowledge Base
-        knowledge_base_id = create_knowledge_base(bedrock_agent_client, vector_index_arn,
-                                                kb_name, kb_role_arn, region_name)
+        knowledge_base_id = create_knowledge_base(
+            bedrock_agent_client, vector_index_arn, kb_name, kb_role_arn, region_name
+        )
         if not knowledge_base_id:
             return None
 
