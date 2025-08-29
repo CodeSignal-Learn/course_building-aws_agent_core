@@ -78,7 +78,6 @@ def configure_agent(
     requirements_file: str = "requirements.txt",
     protocol: str = "HTTP",  # or "MCP"
 ):
-    print(shutil.which("pip3"))
     if not shutil.which("agentcore"):
         raise RuntimeError(
             "agentcore CLI not found on PATH. "
