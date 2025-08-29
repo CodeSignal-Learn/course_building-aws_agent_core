@@ -45,6 +45,15 @@ def main():
     )
     print("✅ S3VectorsFullAccess policy created and attached to learner")
 
+    # 1.2 grant iam pass role via custom policy file
+    attach_custom_policy(
+        policy_name="IAMPassRole",
+        policy_json_path=os.path.join(POLICIES_DIR, "IAMPassRole.json"),
+        attach_to_type="user",
+        attach_to_name="learner",
+    )
+    print("✅ IAMPassRole policy created and attached to learner")
+
     # 2. Enable the Bedrock models
     for model in BEDROCK_MODELS:
         result = enable_model(model)
