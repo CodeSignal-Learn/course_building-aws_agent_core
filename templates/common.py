@@ -56,9 +56,7 @@ def attach_policy(
             print(f"⚠️  Could not list attached policies: {e}")
 
         if already_attached:
-            print(
-                f"✅ Policy already attached to {attach_to_type} {attach_to_name}"
-            )
+            print(f"✅ Policy already attached to {attach_to_type} {attach_to_name}")
             return True, policy_arn
 
         # Attach policy
@@ -71,9 +69,7 @@ def attach_policy(
                 iam_client.attach_role_policy(
                     RoleName=attach_to_name, PolicyArn=policy_arn
                 )
-            print(
-                f"✅ Attached policy to {attach_to_type} {attach_to_name}"
-            )
+            print(f"✅ Attached policy to {attach_to_type} {attach_to_name}")
 
             return True, policy_arn
 
@@ -145,7 +141,9 @@ def attach_custom_policy(
         policy_document = json.loads(policy_content)
 
         # Create (or resolve) the policy ARN
-        policy_arn = create_policy(policy_name=policy_name, policy_document=policy_document)
+        policy_arn = create_policy(
+            policy_name=policy_name, policy_document=policy_document
+        )
         if not policy_arn:
             print(f"❌ Failed to create policy {policy_name}")
             return None
@@ -809,4 +807,3 @@ def setup_complete_knowledge_base(
     except Exception as e:
         print(f"❌ Complete knowledge base setup failed: {str(e)}")
         return None
-

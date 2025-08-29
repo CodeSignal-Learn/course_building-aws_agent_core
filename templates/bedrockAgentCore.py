@@ -78,6 +78,7 @@ def configure_agent(
     requirements_file: str = "requirements.txt",
     protocol: str = "HTTP",  # or "MCP"
 ):
+    print(shutil.which("pip3"))
     if not shutil.which("agentcore"):
         raise RuntimeError(
             "agentcore CLI not found on PATH. "
@@ -117,9 +118,6 @@ def configure_agent(
 
 def launch_agent(guardrail_id: str):
     launch_cmd = ["agentcore", "launch"]
-    local = os.getenv("LOCAL_DEPLOYMENT", "true").lower()
-    if local == "true":
-        launch_cmd.append("--local")
 
     # Pass the guardrail ID to the agent as env variable
     launch_cmd += ["--env", f"GUARDRAIL_ID={guardrail_id}"]
