@@ -21,6 +21,7 @@ USER_POLICIES = [
     "arn:aws:iam::aws:policy/AmazonBedrockFullAccess",
     "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess",
 ]
+POLICIES_DIR = os.path.join(os.path.dirname(__file__), "policies")
 DOCUMENTS_FOLDER = os.path.join(os.getcwd(), "docs")
 VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
 VECTOR_INDEX_NAME = "bedrock-vector-index"
@@ -135,6 +136,15 @@ def main():
         if not success:
             print(f"❌ Failed to grant {policy} to learner. Exiting.")
             exit(1)
+
+    # 1.1 Attach custom policy to work with ECR when launching agent to AWS
+    attach_custom_policy(
+        policy_name="AgentCoreECRCallerAccess",
+        policy_json_path=os.path.join(POLICIES_DIR, "AgentCoreECRCallerAccess.json"),
+        attach_to_type="user",
+        attach_to_name="learner"
+    )
+    print("✅ AgentCoreECRCallerAccess policy created and attached to learner")
 
     # 2. Enable the Bedrock models
     for model in BEDROCK_MODELS:
