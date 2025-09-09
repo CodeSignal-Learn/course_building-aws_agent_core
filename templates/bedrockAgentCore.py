@@ -12,21 +12,49 @@ from common import (
 )
 from enableModel import enable_model
 
-# Configuration
+# Configuration Constants
+REGION_NAME = "us-east-1"
+ACCOUNT_ID = boto3.client("sts").get_caller_identity()["Account"]
+
+# Agent Configuration
+AGENT_NAME = "my_agent"
+AGENT_ENTRYPOINT = "agent.py"
+REQUIREMENTS_FILE = "requirements.txt"
+PROTOCOL = "HTTP"  # or "MCP"
+
+# IAM Configuration
+EXECUTION_ROLE_NAME = "AmazonBedrockAgentCoreSDKRuntime"
+EXECUTION_POLICY_NAME = "AmazonBedrockAgentCoreRuntimeExecutionPolicy"
+EXECUTION_POLICY_FILE = "BedrockAgentCoreRuntimeExecutionPolicy.json"
+USERNAME = "learner"
+
+# S3 Configuration
+CONFIG_BACKUP_BUCKET_NAME = f"bedrock-agentcore-config-backup-{ACCOUNT_ID}"
+# You can download it back using the following command:
+# aws s3 cp s3://bedrock-agentcore-config-backup-$(aws sts get-caller-identity --query Account --output text)/.bedrock_agentcore.yaml .bedrock_agentcore.yaml
+
+# Knowledge Base Configuration
+KB_NAME = "bedrock-knowledge-base"
+VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
+VECTOR_INDEX_NAME = "bedrock-vector-index"
+DOCUMENTS_FOLDER = os.path.join(os.getcwd(), "docs")
+
+# Bedrock Models
 BEDROCK_MODELS = [
     "anthropic.claude-sonnet-4-20250514-v1:0",
     "amazon.titan-embed-text-v2:0",
 ]
+
+# User Policies
 USER_POLICIES = [
     "arn:aws:iam::aws:policy/AmazonBedrockFullAccess",
     "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess",
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess",
+    "arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess"
 ]
-DOCUMENTS_FOLDER = os.path.join(os.getcwd(), "docs")
-VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
-VECTOR_INDEX_NAME = "bedrock-vector-index"
-KB_NAME = "bedrock-knowledge-base"
-REGION_NAME = "us-east-1"
-ACCOUNT_ID = boto3.client("sts").get_caller_identity()["Account"]
+
+# Directories
+POLICIES_DIR = os.path.join(os.path.dirname(__file__), "policies")
 
 
 def create_execution_role():
@@ -35,7 +63,7 @@ def create_execution_role():
     # Create role if it doesn't exist
     try:
         iam.create_role(
-            RoleName="AmazonBedrockAgentCoreSDKRuntime",
+            RoleName=EXECUTION_ROLE_NAME,
             AssumeRolePolicyDocument=json.dumps(
                 {
                     "Version": "2012-10-17",
@@ -49,34 +77,29 @@ def create_execution_role():
                 }
             ),
         )
-        print("✅ Created IAM role AmazonBedrockAgentCoreSDKRuntime")
+        print(f"✅ Created IAM role {EXECUTION_ROLE_NAME}")
     except iam.exceptions.EntityAlreadyExistsException:
-        print("✅ IAM role AmazonBedrockAgentCoreSDKRuntime already exists")
+        print(f"✅ IAM role {EXECUTION_ROLE_NAME} already exists")
 
     # Ensure execution policy exists and is attached to the role
-    policy_name = "AmazonBedrockAgentCoreRuntimeExecutionPolicy"
-    policy_json_path = os.path.join(
-        os.path.dirname(__file__),
-        "policies",
-        "BedrockAgentCoreRuntimeExecutionPolicy.json",
-    )
+    policy_json_path = os.path.join(POLICIES_DIR, EXECUTION_POLICY_FILE)
     attach_custom_policy(
-        policy_name=policy_name,
+        policy_name=EXECUTION_POLICY_NAME,
         policy_json_path=policy_json_path,
         attach_to_type="role",
-        attach_to_name="AmazonBedrockAgentCoreSDKRuntime",
+        attach_to_name=EXECUTION_ROLE_NAME,
         replacements={"{AWS_ACCOUNT_ID}": ACCOUNT_ID},
     )
 
-    return f"arn:aws:iam::{ACCOUNT_ID}:role/AmazonBedrockAgentCoreSDKRuntime"
+    return f"arn:aws:iam::{ACCOUNT_ID}:role/{EXECUTION_ROLE_NAME}"
 
 
 def configure_agent(
-    entrypoint: str = "agent.py",
-    name: str = "my_agent",
-    region: str = "us-east-1",
-    requirements_file: str = "requirements.txt",
-    protocol: str = "HTTP",  # or "MCP"
+    entrypoint: str = AGENT_ENTRYPOINT,
+    name: str = AGENT_NAME,
+    region: str = REGION_NAME,
+    requirements_file: str = REQUIREMENTS_FILE,
+    protocol: str = PROTOCOL,
 ):
     if not shutil.which("agentcore"):
         raise RuntimeError(
@@ -115,11 +138,48 @@ def configure_agent(
     subprocess.run(cfg_cmd, check=True)
 
 
-def launch_agent(guardrail_id: str):
-    launch_cmd = ["agentcore", "launch"]
+def create_config_backup_bucket(bucket_name: str = CONFIG_BACKUP_BUCKET_NAME):
+    """Create S3 bucket and upload the .bedrock_agentcore.yaml configuration file"""
+    try:
+        s3_client = boto3.client('s3', region_name=REGION_NAME)
+        
+        # Create the bucket
+        try:
+            s3_client.create_bucket(Bucket=bucket_name)
+            print(f"✅ Created S3 bucket: {bucket_name}")
+        except s3_client.exceptions.BucketAlreadyOwnedByYou:
+            print(f"✅ S3 bucket {bucket_name} already exists and is owned by you")
+        except s3_client.exceptions.BucketAlreadyExists:
+            print(f"⚠️  S3 bucket {bucket_name} already exists (owned by someone else)")
+            return False
+        
+        # Upload the .bedrock_agentcore.yaml file
+        config_file_path = os.path.join(os.path.dirname(__file__), ".bedrock_agentcore.yaml")
+        
+        if os.path.exists(config_file_path):
+            s3_client.upload_file(
+                config_file_path, 
+                bucket_name, 
+                ".bedrock_agentcore.yaml"
+            )
+            print(f"✅ Uploaded .bedrock_agentcore.yaml to bucket: {bucket_name}")
+            return True
+        else:
+            print("⚠️  .bedrock_agentcore.yaml file not found, skipping upload")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error creating config backup bucket: {e}")
+        return False
 
-    # Pass the guardrail ID to the agent as env variable
-    launch_cmd += ["--env", f"GUARDRAIL_ID={guardrail_id}"]
+
+def launch_agent(guardrail_id: str, knowledge_base_id: str):
+    launch_cmd = [
+        "agentcore", 
+        "launch",
+        "--env", f"GUARDRAIL_ID={guardrail_id}",
+        "--env", f"KNOWLEDGE_BASE_ID={knowledge_base_id}"
+    ]
 
     subprocess.run(launch_cmd, check=True)
 
@@ -129,11 +189,11 @@ def main():
     for policy in USER_POLICIES:
         success, _ = attach_policy(
             attach_to_type="user",
-            attach_to_name="learner",
+            attach_to_name=USERNAME,
             policy_arn=policy,
         )
         if not success:
-            print(f"❌ Failed to grant {policy} to learner. Exiting.")
+            print(f"❌ Failed to grant {policy} to {USERNAME}. Exiting.")
             exit(1)
 
     # 2. Enable the Bedrock models
@@ -174,16 +234,16 @@ def main():
         exit(1)
 
     # 5. Configure and then launch agent
-    configure_agent(
-        entrypoint="agent.py",
-        name="my_agent",
-        region="us-east-1",
-        requirements_file="requirements.txt",
-    )
+    configure_agent()
     print("✅ Agent is configured")
 
+    # 6. Create backup bucket and upload config
+    create_config_backup_bucket()
+
+    # 7. Launch agent
     launch_agent(
         guardrail_id=guardrail_id,
+        knowledge_base_id=knowledge_base_id,
     )
     print("✅ Agent is launched")
 

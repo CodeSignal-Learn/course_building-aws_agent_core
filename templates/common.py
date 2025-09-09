@@ -69,7 +69,7 @@ def attach_policy(
                 iam_client.attach_role_policy(
                     RoleName=attach_to_name, PolicyArn=policy_arn
                 )
-            print(f"✅ Attached policy to {attach_to_type} {attach_to_name}")
+            print(f"✅ Attached policy {policy_arn} to {attach_to_type} {attach_to_name}")
 
             return True, policy_arn
 

@@ -96,6 +96,17 @@
                 "arn:aws:bedrock:*::foundation-model/*",
                 "arn:aws:bedrock:us-east-1:{AWS_ACCOUNT_ID}:*"
             ]
+        },
+        {
+            "Sid": "BedrockKnowledgeBaseAccess",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock:Retrieve",
+                "bedrock:RetrieveAndGenerate"
+            ],
+            "Resource": [
+                "arn:aws:bedrock:us-east-1:{AWS_ACCOUNT_ID}:knowledge-base/*"
+            ]
         }
     ]
 }
