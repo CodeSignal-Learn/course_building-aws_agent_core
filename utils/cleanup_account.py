@@ -22,6 +22,7 @@ from botocore.exceptions import ClientError
 
 # Configuration Constants
 REGION_NAME = "us-east-1"
+ACCOUNT_ID = boto3.client("sts").get_caller_identity()["Account"]
 AGENT_NAME = "my_agent"
 KB_NAME = "bedrock-knowledge-base"
 KB_ROLE_NAME = "kb-service-role"
@@ -30,7 +31,7 @@ AGENT_CORE_POLICY_NAME = "AmazonBedrockAgentCoreRuntimeExecutionPolicy"
 VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
 VECTOR_INDEX_NAME = "bedrock-vector-index"
 GUARDRAIL_NAME = "aws-assistant-guardrail"
-CONFIG_BACKUP_BUCKET_NAME = "bedrock-agentcore-config-backup"
+CONFIG_BACKUP_BUCKET_NAME = f"bedrock-agentcore-config-backup-{ACCOUNT_ID}"
 USERNAME = "learner"
 
 # User policies to clean up
