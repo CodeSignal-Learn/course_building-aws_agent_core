@@ -118,6 +118,41 @@ def configure_agent(
     subprocess.run(cfg_cmd, check=True)
 
 
+def create_config_backup_bucket(bucket_name: str = "bedrock-agentcore-config-backup"):
+    """Create S3 bucket and upload the .bedrock_agentcore.yaml configuration file"""
+    try:
+        s3_client = boto3.client('s3', region_name='us-east-1')
+        
+        # Create the bucket
+        try:
+            s3_client.create_bucket(Bucket=bucket_name)
+            print(f"✅ Created S3 bucket: {bucket_name}")
+        except s3_client.exceptions.BucketAlreadyOwnedByYou:
+            print(f"✅ S3 bucket {bucket_name} already exists and is owned by you")
+        except s3_client.exceptions.BucketAlreadyExists:
+            print(f"⚠️  S3 bucket {bucket_name} already exists (owned by someone else)")
+            return False
+        
+        # Upload the .bedrock_agentcore.yaml file
+        config_file_path = os.path.join(os.path.dirname(__file__), ".bedrock_agentcore.yaml")
+        
+        if os.path.exists(config_file_path):
+            s3_client.upload_file(
+                config_file_path, 
+                bucket_name, 
+                ".bedrock_agentcore.yaml"
+            )
+            print(f"✅ Uploaded .bedrock_agentcore.yaml to bucket: {bucket_name}")
+            return True
+        else:
+            print("⚠️  .bedrock_agentcore.yaml file not found, skipping upload")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error creating config backup bucket: {e}")
+        return False
+
+
 def launch_agent(guardrail_id: str):
     launch_cmd = ["agentcore", "launch"]
 
@@ -185,6 +220,10 @@ def main():
     )
     print("✅ Agent is configured")
 
+    # 6. Create backup bucket and upload config
+    create_config_backup_bucket()
+
+    # 7. Launch agent
     launch_agent(
         guardrail_id=guardrail_id,
     )

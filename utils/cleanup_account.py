@@ -6,11 +6,12 @@ This script will remove:
 1. Bedrock Agent Core (deployed agent)
 2. ECR Repository (created by agentcore CLI)
 3. CodeBuild Project (created by agentcore CLI)
-4. Bedrock Knowledge Base
-5. IAM roles and custom policies (kb-service-role and AmazonBedrockAgentCoreSDKRuntime)
-6. S3 Vectors index and bucket
-7. Guardrail
-8. IAM policies from users (optional)
+4. S3 Config Backup Bucket (stores .bedrock_agentcore.yaml)
+5. Bedrock Knowledge Base
+6. IAM roles and custom policies (kb-service-role and AmazonBedrockAgentCoreSDKRuntime)
+7. S3 Vectors index and bucket
+8. Guardrail
+9. IAM policies from users (optional)
 
 Note: This does NOT disable Bedrock models as they might be used by other resources.
 """
@@ -29,6 +30,7 @@ AGENT_CORE_POLICY_NAME = "AmazonBedrockAgentCoreRuntimeExecutionPolicy"
 VECTOR_BUCKET_NAME = "bedrock-vector-bucket"
 VECTOR_INDEX_NAME = "bedrock-vector-index"
 GUARDRAIL_NAME = "aws-assistant-guardrail"
+CONFIG_BACKUP_BUCKET_NAME = "bedrock-agentcore-config-backup"
 USERNAME = "learner"
 
 # User policies to clean up
@@ -355,6 +357,49 @@ def cleanup_s3_vectors(vector_bucket_name: str = VECTOR_BUCKET_NAME,
         print(f"❌ Error cleaning up S3 Vectors: {e}")
 
 
+def cleanup_config_backup_bucket(bucket_name: str = CONFIG_BACKUP_BUCKET_NAME):
+    """Remove S3 bucket used for configuration backup"""
+    try:
+        s3_client = boto3.client("s3", region_name=REGION_NAME)
+        
+        # Check if bucket exists first
+        try:
+            s3_client.head_bucket(Bucket=bucket_name)
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code in ['404', 'NoSuchBucket']:
+                print(f"ℹ️  S3 config backup bucket {bucket_name} not found")
+                return
+            else:
+                print(f"⚠️  Could not check S3 bucket {bucket_name}: {e}")
+                return
+        
+        # Delete all objects in the bucket first
+        try:
+            # List all objects
+            response = s3_client.list_objects_v2(Bucket=bucket_name)
+            objects = response.get('Contents', [])
+            
+            if objects:
+                # Delete all objects
+                delete_objects = [{'Key': obj['Key']} for obj in objects]
+                s3_client.delete_objects(
+                    Bucket=bucket_name,
+                    Delete={'Objects': delete_objects}
+                )
+                print(f"✅ Deleted {len(objects)} objects from S3 bucket: {bucket_name}")
+            
+            # Delete the bucket
+            s3_client.delete_bucket(Bucket=bucket_name)
+            print(f"✅ Deleted S3 config backup bucket: {bucket_name}")
+            
+        except Exception as e:
+            print(f"⚠️  Could not delete S3 bucket {bucket_name}: {e}")
+            
+    except Exception as e:
+        print(f"❌ Error cleaning up S3 config backup bucket: {e}")
+
+
 def cleanup_guardrail(region_name: str = REGION_NAME):
     """Remove Bedrock guardrail"""
     try:
@@ -412,6 +457,7 @@ def main():
     print(f"• Bedrock Agent Core deployment ({AGENT_NAME})")
     print(f"• ECR Repository (bedrock-agentcore-{AGENT_NAME})")
     print(f"• CodeBuild Project (bedrock-agentcore-{AGENT_NAME}-builder)")
+    print(f"• S3 Config Backup Bucket ({CONFIG_BACKUP_BUCKET_NAME})")
     print(f"• Bedrock Knowledge Base ({KB_NAME})")
     print(f"• IAM Roles ({KB_ROLE_NAME}, {AGENT_CORE_ROLE_NAME})")
     print("• Custom IAM policies")
@@ -439,30 +485,34 @@ def main():
     cleanup_codebuild_project()
     print()
     
-    print("4. Cleaning up Knowledge Base...")
+    print("4. Cleaning up S3 Config Backup Bucket...")
+    cleanup_config_backup_bucket()
+    print()
+    
+    print("5. Cleaning up Knowledge Base...")
     cleanup_knowledge_base()
     print()
     
-    print("5. Cleaning up Knowledge Base IAM Role...")
+    print("6. Cleaning up Knowledge Base IAM Role...")
     cleanup_iam_role()
     print()
     
-    print("6. Cleaning up Agent Core Execution Role...")
+    print("7. Cleaning up Agent Core Execution Role...")
     cleanup_agent_core_execution_role()
     print()
     
-    print("7. Cleaning up S3 Vectors...")
+    print("8. Cleaning up S3 Vectors...")
     cleanup_s3_vectors()
     print()
     
-    print("8. Cleaning up Guardrail...")
+    print("9. Cleaning up Guardrail...")
     cleanup_guardrail()
     print()
     
     # Optional: Remove user policies
     remove_user_policies = input(f"Remove all Bedrock and Agent Core policies from user '{USERNAME}'? (y/N): ").strip().lower()
     if remove_user_policies in ['y', 'yes']:
-        print("9. Cleaning up User Policies...")
+        print("10. Cleaning up User Policies...")
         cleanup_user_policies()
         print()
     
