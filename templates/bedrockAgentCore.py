@@ -174,11 +174,12 @@ def create_config_backup_bucket(bucket_name: str = CONFIG_BACKUP_BUCKET_NAME):
 
 
 def launch_agent(guardrail_id: str, knowledge_base_id: str):
-    launch_cmd = ["agentcore", "launch"]
-
-    # Pass the guardrail ID and knowledge base ID to the agent as env variables
-    launch_cmd += ["--env", f"GUARDRAIL_ID={guardrail_id}"]
-    launch_cmd += ["--env", f"KNOWLEDGE_BASE_ID={knowledge_base_id}"]
+    launch_cmd = [
+        "agentcore", 
+        "launch",
+        "--env", f"GUARDRAIL_ID={guardrail_id}",
+        "--env", f"KNOWLEDGE_BASE_ID={knowledge_base_id}"
+    ]
 
     subprocess.run(launch_cmd, check=True)
 
