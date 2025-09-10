@@ -19,7 +19,7 @@ ACCOUNT_ID = boto3.client("sts").get_caller_identity()["Account"]
 
 # Agent Configuration
 AGENT_NAME = "my_agent"
-AGENT_ENTRYPOINT = "agent.py"
+AGENT_ENTRYPOINT = "main.py"
 REQUIREMENTS_FILE = "requirements.txt"
 PROTOCOL = "HTTP"  # or "MCP"
 
