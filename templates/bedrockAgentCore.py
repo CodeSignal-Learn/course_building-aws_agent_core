@@ -149,36 +149,6 @@ def cleanup_existing_resources():
         except Exception as e:
             print(f"⚠️  Could not cleanup CodeBuild project: {e}")
         
-        # 4. Cleanup config backup bucket
-        try:
-            s3_client = boto3.client("s3", region_name=REGION_NAME)
-            
-            try:
-                s3_client.head_bucket(Bucket=CONFIG_BACKUP_BUCKET_NAME)
-                
-                # Delete all objects first
-                response = s3_client.list_objects_v2(Bucket=CONFIG_BACKUP_BUCKET_NAME)
-                objects = response.get('Contents', [])
-                
-                if objects:
-                    delete_objects = [{'Key': obj['Key']} for obj in objects]
-                    s3_client.delete_objects(
-                        Bucket=CONFIG_BACKUP_BUCKET_NAME,
-                        Delete={'Objects': delete_objects}
-                    )
-                
-                # Delete the bucket
-                s3_client.delete_bucket(Bucket=CONFIG_BACKUP_BUCKET_NAME)
-                print(f"✅ Deleted existing config backup bucket: {CONFIG_BACKUP_BUCKET_NAME}")
-                
-            except s3_client.exceptions.NoSuchBucket:
-                pass  # Bucket doesn't exist, which is fine
-                
-        except Exception as e:
-            print(f"⚠️  Could not cleanup config backup bucket: {e}")
-            
-        print("✅ Cleanup completed\n")
-        
     except Exception as e:
         print(f"❌ Error during cleanup: {e}")
         print("⚠️  Continuing with deployment despite cleanup errors...\n")
