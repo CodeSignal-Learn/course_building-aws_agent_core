@@ -51,7 +51,8 @@ USER_POLICIES = [
     "arn:aws:iam::aws:policy/AmazonBedrockFullAccess",
     "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess",
     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess",
-    "arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess"
+    "arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess",
+    "arn:aws:iam::aws:policy/AmazonS3FullAccess",
 ]
 
 # Directories
@@ -61,42 +62,49 @@ POLICIES_DIR = os.path.join(os.path.dirname(__file__), "policies")
 def cleanup_existing_agentcore_runtimes():
     """Clean up existing AgentCore runtimes before creating new ones"""
     print("🧹 Cleaning up existing AgentCore runtimes...")
-    
+
     try:
-        bedrock_agentcore_client = boto3.client('bedrock-agentcore-control', region_name=REGION_NAME)
+        bedrock_agentcore_client = boto3.client(
+            "bedrock-agentcore-control", region_name=REGION_NAME
+        )
         response = bedrock_agentcore_client.list_agent_runtimes()
         agent_runtimes = response.get("agentRuntimes", [])
-        
+
         for runtime in agent_runtimes:
             runtime_name = runtime.get("name", "")
             runtime_id = runtime.get("agentRuntimeId", "")
-            
+
             try:
                 bedrock_agentcore_client.delete_agent_runtime(agentRuntimeId=runtime_id)
                 print(f"✅ Initiated deletion of agent runtime: {runtime_id}")
-                
+
                 # Wait for deletion to complete
-                print(f"⏳ Waiting for agent runtime {runtime_id} to be fully deleted...")
-                wait_interval = 5   # 10 seconds
+                print(
+                    f"⏳ Waiting for agent runtime {runtime_id} to be fully deleted..."
+                )
+                wait_interval = 5  # 10 seconds
                 elapsed_time = 0
-                
-                while True:
+                agent_runtime_deleted = False
+
+                while not agent_runtime_deleted:
                     try:
                         # Try to get the runtime - if it doesn't exist, deletion is complete
-                        bedrock_agentcore_client.get_agent_runtime(agentRuntimeId=runtime_id)
+                        bedrock_agentcore_client.get_agent_runtime(
+                            agentRuntimeId=runtime_id
+                        )
                         print(f"⏳ Still deleting... ({elapsed_time}s elapsed)")
                         time.sleep(wait_interval)
                         elapsed_time += wait_interval
                     except Exception:
                         # Runtime not found = deletion complete
                         print(f"✅ Agent runtime {runtime_id} fully deleted")
-                        break
-                    
+                        agent_runtime_deleted = True
+
             except Exception as e:
                 print(f"⚠️  Could not delete agent runtime {runtime_id}: {e}")
-                    
+
     except Exception as e:
-        raise(f"Error: Could not cleanup agent runtimes: {e}")
+        raise (f"Error: Could not cleanup agent runtimes: {e}")
 
 
 def create_execution_role():
@@ -183,8 +191,8 @@ def configure_agent(
 def create_config_backup_bucket(bucket_name: str = CONFIG_BACKUP_BUCKET_NAME):
     """Create S3 bucket and upload the .bedrock_agentcore.yaml configuration file"""
     try:
-        s3_client = boto3.client('s3', region_name=REGION_NAME)
-        
+        s3_client = boto3.client("s3", region_name=REGION_NAME)
+
         # Create the bucket
         try:
             s3_client.create_bucket(Bucket=bucket_name)
@@ -194,22 +202,22 @@ def create_config_backup_bucket(bucket_name: str = CONFIG_BACKUP_BUCKET_NAME):
         except s3_client.exceptions.BucketAlreadyExists:
             print(f"⚠️  S3 bucket {bucket_name} already exists (owned by someone else)")
             return False
-        
+
         # Upload the .bedrock_agentcore.yaml file
-        config_file_path = os.path.join(os.path.dirname(__file__), ".bedrock_agentcore.yaml")
-        
+        config_file_path = os.path.join(
+            os.path.dirname(__file__), ".bedrock_agentcore.yaml"
+        )
+
         if os.path.exists(config_file_path):
             s3_client.upload_file(
-                config_file_path, 
-                bucket_name, 
-                ".bedrock_agentcore.yaml"
+                config_file_path, bucket_name, ".bedrock_agentcore.yaml"
             )
             print(f"✅ Uploaded .bedrock_agentcore.yaml to bucket: {bucket_name}")
             return True
         else:
             print("⚠️  .bedrock_agentcore.yaml file not found, skipping upload")
             return False
-            
+
     except Exception as e:
         print(f"❌ Error creating config backup bucket: {e}")
         return False
@@ -217,10 +225,12 @@ def create_config_backup_bucket(bucket_name: str = CONFIG_BACKUP_BUCKET_NAME):
 
 def launch_agent(guardrail_id: str, knowledge_base_id: str):
     launch_cmd = [
-        "agentcore", 
+        "agentcore",
         "launch",
-        "--env", f"GUARDRAIL_ID={guardrail_id}",
-        "--env", f"KNOWLEDGE_BASE_ID={knowledge_base_id}"
+        "--env",
+        f"GUARDRAIL_ID={guardrail_id}",
+        "--env",
+        f"KNOWLEDGE_BASE_ID={knowledge_base_id}",
     ]
 
     subprocess.run(launch_cmd, check=True)
@@ -229,7 +239,7 @@ def launch_agent(guardrail_id: str, knowledge_base_id: str):
 def main():
     # 0. Cleanup existing resources first
     cleanup_existing_agentcore_runtimes()
-    
+
     # 1. Grant user policies
     for policy in USER_POLICIES:
         success, _ = attach_policy(
@@ -240,6 +250,15 @@ def main():
         if not success:
             print(f"❌ Failed to grant {policy} to {USERNAME}. Exiting.")
             exit(1)
+
+    # 1.2 grant iam full access via custom policy file
+    attach_custom_policy(
+        policy_name="IAMFullAccess",
+        policy_json_path=os.path.join(POLICIES_DIR, "IAMFullAccess.json"),
+        attach_to_type="user",
+        attach_to_name="learner",
+    )
+    print("✅ IAMFullAccess policy created and attached to learner")
 
     # 2. Enable the Bedrock models
     for model in BEDROCK_MODELS:
