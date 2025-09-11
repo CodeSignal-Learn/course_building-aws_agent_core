@@ -58,100 +58,45 @@ USER_POLICIES = [
 POLICIES_DIR = os.path.join(os.path.dirname(__file__), "policies")
 
 
-def cleanup_existing_resources():
-    """Clean up existing AgentCore resources before creating new ones"""
-    print("🧹 Cleaning up existing AgentCore resources...")
+def cleanup_existing_agentcore_runtimes():
+    """Clean up existing AgentCore runtimes before creating new ones"""
+    print("🧹 Cleaning up existing AgentCore runtimes...")
     
     try:
-        # 1. Cleanup Bedrock Agent Core runtime
-        try:
-            bedrock_agentcore_client = boto3.client('bedrock-agentcore-control', region_name=REGION_NAME)
-            response = bedrock_agentcore_client.list_agent_runtimes()
-            agent_runtimes = response.get("agentRuntimes", [])
-            
-            for runtime in agent_runtimes:
-                runtime_name = runtime.get("name", "")
-                runtime_id = runtime.get("agentRuntimeId", "")
-                
-                # Check if agent_name matches either the name or is at the start of the runtime ID
-                if (AGENT_NAME in runtime_name.lower()) or (runtime_id.lower().startswith(AGENT_NAME.lower())):
-                     try:
-                         bedrock_agentcore_client.delete_agent_runtime(agentRuntimeId=runtime_id)
-                         print(f"✅ Initiated deletion of agent runtime: {runtime_id}")
-                         
-                         # Wait for deletion to complete
-                         print(f"⏳ Waiting for agent runtime {runtime_id} to be fully deleted...")
-                         max_wait_time = 300  # 5 minutes
-                         wait_interval = 10   # 10 seconds
-                         elapsed_time = 0
-                         
-                         while elapsed_time < max_wait_time:
-                             try:
-                                 # Try to get the runtime - if it doesn't exist, deletion is complete
-                                 bedrock_agentcore_client.get_agent_runtime(agentRuntimeId=runtime_id)
-                                 print(f"⏳ Still deleting... ({elapsed_time}s elapsed)")
-                                 time.sleep(wait_interval)
-                                 elapsed_time += wait_interval
-                             except Exception:
-                                 # Runtime not found = deletion complete
-                                 print(f"✅ Agent runtime {runtime_id} fully deleted")
-                                 break
-                         
-                         if elapsed_time >= max_wait_time:
-                             print(f"⚠️  Timeout waiting for agent runtime {runtime_id} deletion")
-                             
-                     except Exception as e:
-                         if "DELETING" in str(e):
-                             print(f"⚠️  Agent runtime {runtime_id} is already being deleted")
-                         else:
-                             print(f"⚠️  Could not delete agent runtime {runtime_id}: {e}")
-                        
-        except Exception as e:
-            print(f"⚠️  Could not cleanup agent runtimes: {e}")
+        bedrock_agentcore_client = boto3.client('bedrock-agentcore-control', region_name=REGION_NAME)
+        response = bedrock_agentcore_client.list_agent_runtimes()
+        agent_runtimes = response.get("agentRuntimes", [])
         
-        # 2. Cleanup ECR repository
-        try:
-            ecr_client = boto3.client("ecr", region_name=REGION_NAME)
-            all_repos = ecr_client.describe_repositories()
-            repositories = all_repos.get('repositories', [])
+        for runtime in agent_runtimes:
+            runtime_name = runtime.get("name", "")
+            runtime_id = runtime.get("agentRuntimeId", "")
             
-            for repo in repositories:
-                repo_name = repo.get('repositoryName', '')
-                if AGENT_NAME in repo_name.lower() or repo_name.lower().startswith(f"bedrock-agentcore-{AGENT_NAME}".lower()):
+            try:
+                bedrock_agentcore_client.delete_agent_runtime(agentRuntimeId=runtime_id)
+                print(f"✅ Initiated deletion of agent runtime: {runtime_id}")
+                
+                # Wait for deletion to complete
+                print(f"⏳ Waiting for agent runtime {runtime_id} to be fully deleted...")
+                wait_interval = 5   # 10 seconds
+                elapsed_time = 0
+                
+                while True:
                     try:
-                        # Delete all images first
-                        response = ecr_client.list_images(repositoryName=repo_name)
-                        image_ids = response.get('imageIds', [])
-                        
-                        if image_ids:
-                            ecr_client.batch_delete_image(repositoryName=repo_name, imageIds=image_ids)
-                        
-                        # Delete the repository
-                        ecr_client.delete_repository(repositoryName=repo_name, force=True)
-                        print(f"✅ Deleted existing ECR repository: {repo_name}")
-                    except Exception as e:
-                        print(f"⚠️  Could not delete ECR repository {repo_name}: {e}")
-                        
-        except Exception as e:
-            print(f"⚠️  Could not cleanup ECR repositories: {e}")
-        
-        # 3. Cleanup CodeBuild project
-        try:
-            codebuild_client = boto3.client("codebuild", region_name=REGION_NAME)
-            response = codebuild_client.list_projects()
-            project_names = response.get('projects', [])
-            project_name = f"bedrock-agentcore-{AGENT_NAME}-builder"
-            
-            if project_name in project_names:
-                codebuild_client.delete_project(name=project_name)
-                print(f"✅ Deleted existing CodeBuild project: {project_name}")
-                
-        except Exception as e:
-            print(f"⚠️  Could not cleanup CodeBuild project: {e}")
-        
+                        # Try to get the runtime - if it doesn't exist, deletion is complete
+                        bedrock_agentcore_client.get_agent_runtime(agentRuntimeId=runtime_id)
+                        print(f"⏳ Still deleting... ({elapsed_time}s elapsed)")
+                        time.sleep(wait_interval)
+                        elapsed_time += wait_interval
+                    except Exception:
+                        # Runtime not found = deletion complete
+                        print(f"✅ Agent runtime {runtime_id} fully deleted")
+                        break
+                    
+            except Exception as e:
+                print(f"⚠️  Could not delete agent runtime {runtime_id}: {e}")
+                    
     except Exception as e:
-        print(f"❌ Error during cleanup: {e}")
-        print("⚠️  Continuing with deployment despite cleanup errors...\n")
+        raise(f"Error: Could not cleanup agent runtimes: {e}")
 
 
 def create_execution_role():
@@ -283,7 +228,7 @@ def launch_agent(guardrail_id: str, knowledge_base_id: str):
 
 def main():
     # 0. Cleanup existing resources first
-    cleanup_existing_resources()
+    cleanup_existing_agentcore_runtimes()
     
     # 1. Grant user policies
     for policy in USER_POLICIES:
