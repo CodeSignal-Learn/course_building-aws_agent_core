@@ -275,7 +275,8 @@ def launch_agent(guardrail_id: str, knowledge_base_id: str):
         "agentcore", 
         "launch",
         "--env", f"GUARDRAIL_ID={guardrail_id}",
-        "--env", f"KNOWLEDGE_BASE_ID={knowledge_base_id}"
+        "--env", f"KNOWLEDGE_BASE_ID={knowledge_base_id}",
+        "--auto-update-on-conflict"
     ]
 
     subprocess.run(launch_cmd, check=True)
@@ -283,7 +284,7 @@ def launch_agent(guardrail_id: str, knowledge_base_id: str):
 
 def main():
     # 0. Cleanup existing resources first
-    cleanup_existing_resources()
+    # cleanup_existing_resources()
     
     # 1. Grant user policies
     for policy in USER_POLICIES:
