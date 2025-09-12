@@ -52,7 +52,7 @@ USER_POLICIES = [
     "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess",
     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess",
     "arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess",
-    "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+    "arn:aws:iam::aws:policy/AmazonS3FullAccess"
 ]
 
 # Directories
@@ -200,27 +200,35 @@ def create_config_backup_bucket(bucket_name: str = CONFIG_BACKUP_BUCKET_NAME):
         except s3_client.exceptions.BucketAlreadyOwnedByYou:
             print(f"✅ S3 bucket {bucket_name} already exists and is owned by you")
         except s3_client.exceptions.BucketAlreadyExists:
-            print(f"⚠️  S3 bucket {bucket_name} already exists (owned by someone else)")
-            return False
-
+            print(f"❌ S3 bucket {bucket_name} already exists")
+            raise RuntimeError(f"Cannot use bucket {bucket_name} - already exists and owned by someone else")
+        
+        # Check if the config file exists
+        config_file_path = os.path.join(os.getcwd(), ".bedrock_agentcore.yaml")
+        
+        if not os.path.exists(config_file_path):
+            raise FileNotFoundError(f"Configuration file not found: {config_file_path}")
+        
         # Upload the .bedrock_agentcore.yaml file
-        config_file_path = os.path.join(
-            os.path.dirname(__file__), ".bedrock_agentcore.yaml"
-        )
-
-        if os.path.exists(config_file_path):
+        try:
             s3_client.upload_file(
                 config_file_path, bucket_name, ".bedrock_agentcore.yaml"
             )
             print(f"✅ Uploaded .bedrock_agentcore.yaml to bucket: {bucket_name}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to upload config file to S3: {e}")
+        
+        # Verify the upload by checking if the file exists in S3
+        try:
+            s3_client.head_object(Bucket=bucket_name, Key=".bedrock_agentcore.yaml")
+            print(f"✅ Verified .bedrock_agentcore.yaml exists in S3 bucket: {bucket_name}")
             return True
-        else:
-            print("⚠️  .bedrock_agentcore.yaml file not found, skipping upload")
-            return False
-
+        except Exception as e:
+            raise RuntimeError(f"Upload verification failed - file not found in S3: {e}")
+            
     except Exception as e:
         print(f"❌ Error creating config backup bucket: {e}")
-        return False
+        raise
 
 
 def launch_agent(guardrail_id: str, knowledge_base_id: str):
@@ -301,15 +309,16 @@ def main():
     configure_agent()
     print("✅ Agent is configured")
 
-    # 6. Create backup bucket and upload config
-    create_config_backup_bucket()
-
-    # 7. Launch agent
+    # 6. Launch agent
     launch_agent(
         guardrail_id=guardrail_id,
         knowledge_base_id=knowledge_base_id,
     )
     print("✅ Agent is launched")
+
+    # 7. Create backup bucket and upload config after launch
+    create_config_backup_bucket()
+    print("✅ Config file uploaded to S3 bucket")
 
 
 if __name__ == "__main__":
