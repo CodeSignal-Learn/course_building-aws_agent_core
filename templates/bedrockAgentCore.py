@@ -259,14 +259,14 @@ def main():
             print(f"❌ Failed to grant {policy} to {USERNAME}. Exiting.")
             exit(1)
 
-    # 1.2 grant iam full access via custom policy file
+    # 1.2 grant iam access via custom policy file
     attach_custom_policy(
-        policy_name="IAMFullAccess",
-        policy_json_path=os.path.join(POLICIES_DIR, "IAMFullAccess.json"),
+        policy_name="IAMAccess",
+        policy_json_path=os.path.join(POLICIES_DIR, "IAMAccess.json"),
         attach_to_type="user",
         attach_to_name="learner",
     )
-    print("✅ IAMFullAccess policy created and attached to learner")
+    print("✅ IAMAccess policy created and attached to learner")
 
     # 2. Enable the Bedrock models
     for model in BEDROCK_MODELS:
