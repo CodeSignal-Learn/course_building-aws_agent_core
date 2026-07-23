@@ -10,7 +10,7 @@ from enableModel import enable_model
 
 # Configuration
 BEDROCK_MODELS = [
-    "anthropic.claude-sonnet-4-20250514-v1:0",
+    "anthropic.claude-sonnet-5",
     "amazon.titan-embed-text-v2:0",
     "amazon.nova-pro-v1:0",
 ]

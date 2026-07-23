@@ -65,7 +65,7 @@ cd templates
 python bedrockBasic.py
 ```
 - Grants Bedrock full access to learner user
-- Enables Claude Sonnet model (anthropic.claude-sonnet-4-20250514-v1:0)
+- Enables Claude Sonnet model (anthropic.claude-sonnet-5)
 - Sets up basic GenAI capabilities and safe AI interactions
 
 #### Courses 2 & 3: Managing Data for GenAI / Strands Agents

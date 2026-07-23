@@ -4,7 +4,7 @@ from common import attach_policy
 from enableModel import enable_model
 
 # Bedrock model ID to enable
-MODEL_ID = "anthropic.claude-sonnet-4-20250514-v1:0"
+MODEL_ID = "anthropic.claude-sonnet-5"
 BEDROCK_POLICY_ARN = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
 
 
