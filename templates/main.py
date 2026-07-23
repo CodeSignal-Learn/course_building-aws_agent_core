@@ -5,7 +5,7 @@ from strands_tools import calculator, retrieve
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 # Define the Bedrock model ID
-MODEL_ID = "us.anthropic.claude-sonnet-5"
+MODEL_ID = "anthropic.claude-sonnet-5"
 
 # Read guardrail info from environment variables
 GUARDRAIL_ID = os.getenv("GUARDRAIL_ID")
